@@ -15,22 +15,22 @@ A long-term memory system for AI agents inspired by the Zettelkasten note-taking
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    FastAPI Application                   │
+┌────────────────────────────────────────────────────────┐
+│                    FastAPI Application                 │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │          Buffer Notes API (Fast)                 │  │
-│  │  • POST /api/buffer - Instant write            │  │
+│  │  • POST /api/buffer - Instant write              │  │
 │  └──────────────────────────────────────────────────┘  │
 │  ┌──────────────────────────────────────────────────┐  │
 │  │          Memory API (Complete)                   │  │
-│  │  • CRUD, Search, Links, Tags                 │  │
+│  │  • CRUD, Search, Links, Tags                     │  │
 │  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-                │                      │
-                ▼                      ▼
+└────────────────────────────────────────────────────────┘
+              │                     │
+              ▼                     ▼
         ┌───────────┐         ┌───────────┐
-        │   SQLite   │         │   Qdrant   │
-        │  + Buffer  │         │(Vectors)   │
+        │   SQLite  │         │   Qdrant  │
+        │  + Buffer │         │(Vectors)  │
         └───────────┘         └───────────┘
 ```
 
@@ -182,16 +182,16 @@ uvicorn main:app --reload
 
 ```
 agents_memory/
-├── app/                 # Application code
-│   ├── api/            # API routes
-│   ├── models/         # Data models
-│   ├── services/       # Business logic
+├── app/               # Application code
+│   ├── api/           # API routes
+│   ├── models/        # Data models
+│   ├── services/      # Business logic
 │   ├── db/            # Database clients
 │   └── utils/         # Utilities
-├── scripts/             # Bash scripts
-├── data/               # Data directory
-├── tests/              # Tests
-└── docs/               # Documentation
+├── scripts/           # Bash scripts
+├── data/              # Data directory
+├── tests/             # Tests
+└── docs/              # Documentation
 ```
 
 See [Project Structure](docs/project-structure.md) for details.
