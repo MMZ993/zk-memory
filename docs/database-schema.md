@@ -38,6 +38,19 @@ CREATE TABLE IF NOT EXISTS relation_types (
 -- Create index for relation_types
 CREATE INDEX IF NOT EXISTS idx_relation_types_name ON relation_types(name);
 
+-- Create buffer_notes table
+CREATE TABLE IF NOT EXISTS buffer_notes (
+    id TEXT PRIMARY KEY,  -- UUID
+    content TEXT NOT NULL,
+    metadata TEXT,  -- JSON string: {"source": "user", "tags": ["idea"]}
+    created_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    processed BOOLEAN DEFAULT FALSE
+);
+
+-- Create indexes for buffer_notes
+CREATE INDEX IF NOT EXISTS idx_buffer_unprocessed ON buffer_notes(processed, created_at);
+CREATE INDEX IF NOT EXISTS idx_buffer_created_at ON buffer_notes(created_at);
+
 -- Create links table
 CREATE TABLE IF NOT EXISTS links (
     id TEXT PRIMARY KEY,  -- UUID
@@ -363,6 +376,97 @@ ORDER BY name
 LIMIT ?;
 ```
 
+#### Buffer Note Queries
+
+```sql
+-- Get all buffer notes
+SELECT *
+FROM buffer_notes
+ORDER BY created_at DESC;
+
+-- Get unprocessed buffer notes (for "dreaming" agent)
+SELECT *
+FROM buffer_notes
+WHERE processed = FALSE
+ORDER BY created_at;
+
+-- Get processed buffer notes
+SELECT *
+FROM buffer_notes
+WHERE processed = TRUE
+ORDER BY created_at DESC;
+
+-- Get buffer note by ID
+SELECT *
+FROM buffer_notes
+WHERE id = ?;
+
+-- Get buffer notes created after specific time
+SELECT *
+FROM buffer_notes
+WHERE created_at > ?
+ORDER BY created_at DESC;
+
+-- Get buffer notes created within last N hours
+SELECT *
+FROM buffer_notes
+WHERE datetime(created_at) > datetime('now', '-' || ? || ' hours')
+ORDER BY created_at DESC;
+
+-- Get buffer notes count
+SELECT
+    COUNT(*) as total,
+    SUM(CASE WHEN processed = TRUE THEN 1 ELSE 0 END) as processed_count,
+    SUM(CASE WHEN processed = FALSE THEN 1 ELSE 0 END) as unprocessed_count
+FROM buffer_notes;
+
+-- Get oldest unprocessed buffer note
+SELECT *
+FROM buffer_notes
+WHERE processed = FALSE
+ORDER BY created_at ASC
+LIMIT 1;
+
+-- Get newest buffer notes (recent N)
+SELECT *
+FROM buffer_notes
+ORDER BY created_at DESC
+LIMIT ?;
+
+-- Search buffer notes by content (keyword search)
+SELECT *
+FROM buffer_notes
+WHERE content LIKE ?
+ORDER BY created_at DESC;
+
+-- Get buffer notes by metadata (JSON search)
+SELECT *
+FROM buffer_notes
+WHERE metadata LIKE ?
+ORDER BY created_at DESC;
+
+-- Delete processed buffer notes older than N days
+DELETE FROM buffer_notes
+WHERE processed = TRUE
+AND datetime(created_at) < datetime('now', '-' || ? || ' days');
+
+-- Mark buffer note as processed
+UPDATE buffer_notes
+SET processed = TRUE
+WHERE id = ?;
+
+-- Mark all buffer notes as processed
+UPDATE buffer_notes
+SET processed = TRUE
+WHERE processed = FALSE;
+
+-- Mark all unprocessed buffer notes older than N hours as processed
+UPDATE buffer_notes
+SET processed = TRUE
+WHERE processed = FALSE
+AND datetime(created_at) < datetime('now', '-' || ? || ' hours');
+```
+
 #### Graph Queries
 
 ```sql
@@ -539,6 +643,10 @@ VALUES (?, ?);
 -- Associate tag with note
 INSERT INTO note_tags (note_id, tag_id)
 VALUES (?, ?);
+
+-- Insert buffer note
+INSERT INTO buffer_notes (id, content, metadata)
+VALUES (?, ?, ?);
 ```
 
 #### Update Operations
@@ -563,6 +671,16 @@ WHERE id = ?;
 UPDATE tags
 SET name = ?
 WHERE id = ?;
+
+-- Update buffer note
+UPDATE buffer_notes
+SET content = ?, metadata = ?
+WHERE id = ?;
+
+-- Mark buffer note as processed
+UPDATE buffer_notes
+SET processed = TRUE
+WHERE id = ?;
 ```
 
 #### Delete Operations
@@ -582,6 +700,17 @@ DELETE FROM tags WHERE id = ?;
 
 -- Remove tag from note
 DELETE FROM note_tags WHERE note_id = ? AND tag_id = ?;
+
+-- Delete buffer note
+DELETE FROM buffer_notes WHERE id = ?;
+
+-- Delete all processed buffer notes
+DELETE FROM buffer_notes WHERE processed = TRUE;
+
+-- Delete processed buffer notes older than N days
+DELETE FROM buffer_notes
+WHERE processed = TRUE
+AND datetime(created_at) < datetime('now', '-' || ? || ' days');
 ```
 
 ## Qdrant Schema

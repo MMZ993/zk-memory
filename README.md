@@ -1,0 +1,205 @@
+# AI Agent Memory System
+
+A long-term memory system for AI agents inspired by the Zettelkasten note-taking method.
+
+## Features
+
+- **Fast Buffer Notes**: Instant writes without embeddings for short-term memory
+- **Semantic Search**: Vector-based search for finding notes by meaning
+- **Note Relationships**: Create typed links between notes (related_to, part_of, etc.)
+- **Tag Management**: Organize notes with tags
+- **Markdown Export**: Export notes to markdown files for human viewing
+- **API-First**: Complete REST API for agent integration
+- **Simple Deployment**: Docker-compose for easy setup
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    FastAPI Application                   │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │          Buffer Notes API (Fast)                 │  │
+│  │  • POST /api/buffer - Instant write            │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │          Memory API (Complete)                   │  │
+│  │  • CRUD, Search, Links, Tags                 │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                │                      │
+                ▼                      ▼
+        ┌───────────┐         ┌───────────┐
+        │   SQLite   │         │   Qdrant   │
+        │  + Buffer  │         │(Vectors)   │
+        └───────────┘         └───────────┘
+```
+
+## Quick Start
+
+### Using Docker Compose
+
+```bash
+# Clone repository
+git clone <repo-url>
+cd agents_memory
+
+# Copy environment file
+cp .env.example .env
+# Edit .env with your OPENAI_API_KEY
+
+# Start services
+docker-compose up -d
+
+# API is available at http://localhost:8000
+```
+
+### Manual Setup
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Start Qdrant
+docker run -p 6333:6333 qdrant/qdrant
+
+# Start application
+uvicorn main:app --reload
+```
+
+## Documentation
+
+- [Database Schema](docs/database-schema.md) - SQL schemas, SQLAlchemy models, queries
+- [API Specification](docs/api-specification.md) - REST API endpoints and examples
+- [Configuration](docs/configuration.md) - Environment variables and setup
+- [Project Structure](docs/project-structure.md) - Directory layout and bash scripts
+- [Implementation Guide](docs/implementation-guide.md) - Step-by-step implementation
+
+## API Usage
+
+### Add to Buffer (Fast)
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/buffer",
+    json={
+        "content": "User prefers morning meetings",
+        "metadata": {"source": "conversation"}
+    }
+)
+buffer_id = response.json()["id"]
+```
+
+### Create Permanent Note (with Embedding)
+
+```python
+response = requests.post(
+    "http://localhost:8000/api/notes",
+    json={
+        "title": "Understanding Neural Networks",
+        "content": "Neural networks are computing systems...",
+        "tags": ["ml", "deep-learning"]
+    }
+)
+note_id = response.json()["id"]
+```
+
+### Search Notes
+
+```python
+response = requests.get(
+    "http://localhost:8000/api/notes/search",
+    params={"q": "neural networks", "tags": "ml", "limit": 5}
+)
+results = response.json()["results"]
+```
+
+## Bash Scripts
+
+Human operations via command-line:
+
+```bash
+# Export notes
+./scripts/export-notes.sh
+
+# Edit note
+vim ./notes/{uuid}.md
+./scripts/sync-notes.sh
+
+# Delete note
+./scripts/delete-note.sh {uuid}
+
+# Download buffer
+./scripts/export-buffer.sh
+
+# Upload to buffer
+./scripts/upload-buffer.sh idea.md
+```
+
+## Configuration
+
+Key environment variables:
+
+| Variable | Default | Description |
+|-----------|----------|-------------|
+| `DATABASE_URL` | sqlite:///./data/memory.db | SQLite database path |
+| `QDRANT_HOST` | localhost | Qdrant server |
+| `OPENAI_API_KEY` | (required) | OpenAI API key |
+| `BUFFER_RETENTION_DAYS` | 7 | Days to keep processed buffer notes (0 = never) |
+| `MARKDOWN_DIR` | ./data/notes | Markdown export directory |
+
+See [Configuration](docs/configuration.md) for complete reference.
+
+## Technology Stack
+
+- **Framework**: FastAPI
+- **Database**: SQLite with SQLAlchemy ORM
+- **Vector DB**: Qdrant (with HNSW indexing)
+- **Embeddings**: OpenAI (or sentence-transformers for local)
+- **Deployment**: Docker, Docker Compose
+
+## Development
+
+### Setup
+
+```bash
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest tests/ -v
+
+# Run with reload
+uvicorn main:app --reload
+```
+
+### Project Structure
+
+```
+agents_memory/
+├── app/                 # Application code
+│   ├── api/            # API routes
+│   ├── models/         # Data models
+│   ├── services/       # Business logic
+│   ├── db/            # Database clients
+│   └── utils/         # Utilities
+├── scripts/             # Bash scripts
+├── data/               # Data directory
+├── tests/              # Tests
+└── docs/               # Documentation
+```
+
+See [Project Structure](docs/project-structure.md) for details.
+
+## License
+
+MIT
+
+## Contributing
+
+Contributions welcome! Please read the documentation first.
