@@ -10,7 +10,12 @@ http://localhost:8000/api
 
 ## Authentication
 
-None (configure via environment variables/API gateway as needed).
+Configure via `API_KEY` environment variable. When set, all requests require `X-API-Key` header.
+
+**Example with auth**:
+```bash
+curl -H "X-API-Key: your-secret-key" http://localhost:8000/api/notes
+```
 
 ## Common Response Format
 
@@ -177,13 +182,22 @@ curl -X POST http://localhost:8000/api/notes \
 
 #### Search Notes
 
-**Endpoint**: `GET /api/notes/search?q=query&tags=ml&limit=10&threshold=0.7`
+**Endpoint**: `GET /api/notes/search`
 
 **Query Parameters**:
-- `q` (string, required) - Search query
+- `q` (string, optional) - Search query for semantic search
 - `tags` (string, optional) - Comma-separated tag names
 - `limit` (integer, optional, default: 10)
 - `threshold` (float, optional, default: 0.7) - Minimum similarity score (0-1)
+- `search_type` (string, optional, default: hybrid) - semantic, keyword, hybrid, graph
+- `graph_depth` (integer, optional, default: 1) - For graph search: levels to traverse (1-3)
+- `graph_start_id` (string, optional) - For graph search: starting note ID
+
+**Search Types**:
+- `semantic`: Vector similarity search (requires `q`)
+- `keyword`: Fuzzy search on title and content (requires `q`)
+- `hybrid`: Combined semantic + keyword (default, requires `q`)
+- `graph`: Find connected notes (requires `graph_start_id`, optionally `q`)
 
 **Response**:
 ```json
@@ -194,7 +208,8 @@ curl -X POST http://localhost:8000/api/notes \
       "title": "Understanding Neural Networks",
       "content": "...",
       "score": 0.95,
-      "tags": ["ml", "deep-learning"]
+      "tags": ["ml", "deep-learning"],
+      "distance": 1  // For graph search
     }
   ],
   "total": 1
@@ -445,6 +460,109 @@ System management and monitoring.
 **Endpoint**: `GET /api/config`
 
 **Response**: Current configuration values
+
+#### Create Backup
+
+**Endpoint**: `POST /api/admin/backup`
+
+**Description**: Create backup of SQLite database and Qdrant snapshot
+
+**Request Body**:
+```json
+{
+  "name": "string (optional, default: auto-generated timestamp)"
+}
+```
+
+**Response**:
+```json
+{
+  "backup_id": "backup_20240120_143000",
+  "sqlite_path": "./data/backups/memory_20240120_143000.db",
+  "qdrant_snapshot": "snapshot-20240120-143000",
+  "created_at": "2024-01-20T14:30:00Z"
+}
+```
+
+#### List Backups
+
+**Endpoint**: `GET /api/admin/backups`
+
+**Response**:
+```json
+{
+  "backups": [
+    {
+      "backup_id": "backup_20240120_143000",
+      "sqlite_path": "./data/backups/memory_20240120_143000.db",
+      "qdrant_snapshot": "snapshot-20240120-143000",
+      "created_at": "2024-01-20T14:30:00Z",
+      "size_mb": 1.5
+    }
+  ]
+}
+```
+
+#### Restore Backup
+
+**Endpoint**: `POST /api/admin/restore/{backup_id}`
+
+**Description**: Restore from backup (stops services during restore)
+
+**Response**: Success message
+
+#### Purge and Re-embed All Notes
+
+**Endpoint**: `POST /api/admin/reembed`
+
+**Description**: Delete all vectors and regenerate embeddings with new model (configured in env)
+
+**Warning**: Expensive operation - may take significant time and cost
+
+**Request Body**:
+```json
+{
+  "confirm": "string (required, must be 'I understand this will delete and regenerate all embeddings')"
+}
+```
+
+**Response**:
+```json
+{
+  "status": "started",
+  "total_notes": 1000,
+  "estimated_time_seconds": 300
+}
+```
+
+#### Get Re-embed Status
+
+**Endpoint**: `GET /api/admin/reembed/status`
+
+**Response**:
+```json
+{
+  "status": "in_progress",
+  "total_notes": 1000,
+  "processed": 450,
+  "failed": 2,
+  "progress_percent": 45
+}
+```
+
+#### Sync Unprocessed Notes
+
+**Endpoint**: `POST /api/admin/sync-embeddings`
+
+**Description**: Generate embeddings for all notes where synced=false (background job trigger)
+
+**Response**:
+```json
+{
+  "status": "started",
+  "pending_notes": 15
+}
+```
 
 ## Data Models
 

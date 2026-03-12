@@ -6,11 +6,16 @@ A long-term memory system for AI agents inspired by the Zettelkasten note-taking
 
 - **Fast Buffer Notes**: Instant writes without embeddings for short-term memory
 - **Semantic Search**: Vector-based search for finding notes by meaning
+- **Keyword Search**: Fuzzy search through titles and content
+- **Graph Search**: Find connected notes by traversing relationships
 - **Note Relationships**: Create typed links between notes (related_to, part_of, etc.)
 - **Tag Management**: Organize notes with tags
-- **Markdown Export**: Export notes to markdown files for human viewing
+- **Markdown Export**: Export notes to markdown files (read-only, for viewing)
+- **Markdown Sync**: Edit markdown files and sync back to database (optional)
 - **API-First**: Complete REST API for agent integration
 - **Simple Deployment**: Docker-compose for easy setup
+- **Backup/Restore**: Full system backup with SQLite and Qdrant snapshots
+- **Model Switching**: Switch embedding providers (OpenAI/Ollama) and re-embed
 
 ## Architecture
 

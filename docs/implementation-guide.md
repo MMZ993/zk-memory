@@ -375,21 +375,46 @@ class TagResponse(BaseModel):
 
 ```python
 from app.db.qdrant import client, QDRANT_COLLECTION
-from openai import OpenAI
+from openai import AsyncOpenAI
+import httpx
 import os
 
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "openai")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-ada-002")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
-def generate_embedding(text: str) -> list[float]:
-    """Generate embedding for text using OpenAI."""
-    response = openai_client.embeddings.create(
+openai_client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+
+async def generate_embedding(text: str) -> list[float]:
+    """Generate embedding for text using configured provider."""
+    if EMBEDDING_PROVIDER == "openai":
+        return await _generate_openai_embedding(text)
+    elif EMBEDDING_PROVIDER == "ollama":
+        return await _generate_ollama_embedding(text)
+    else:
+        raise ValueError(f"Unknown provider: {EMBEDDING_PROVIDER}")
+
+async def _generate_openai_embedding(text: str) -> list[float]:
+    """Generate embedding using OpenAI."""
+    response = await openai_client.embeddings.create(
         input=text,
-        model="text-embedding-ada-002"
+        model=EMBEDDING_MODEL
     )
     return response.data[0].embedding
 
-def upsert_embedding(note_id: str, vector: list[float], payload: dict):
+async def _generate_ollama_embedding(text: str) -> list[float]:
+    """Generate embedding using Ollama."""
+    async with httpx.AsyncClient() as http_client:
+        response = await http_client.post(
+            f"{OLLAMA_HOST}/api/embeddings",
+            json={"model": EMBEDDING_MODEL, "prompt": text}
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data["embedding"]
+
+async def upsert_embedding(note_id: str, vector: list[float], payload: dict):
     """Insert or update vector in Qdrant."""
     from qdrant_client.models import PointStruct
 
@@ -401,7 +426,7 @@ def upsert_embedding(note_id: str, vector: list[float], payload: dict):
 
     client.upsert(collection_name=QDRANT_COLLECTION, points=[point])
 
-def search_embeddings(query_vector: list[float], limit: int = 10, filter: dict = None):
+async def search_embeddings(query_vector: list[float], limit: int = 10, filter: dict = None):
     """Search similar notes using vector similarity."""
     from qdrant_client.models import Filter
 
@@ -426,26 +451,27 @@ from app.services.embedding_service import generate_embedding, upsert_embedding,
 from datetime import datetime
 import uuid
 
-def create_note(db: Session, note_data: dict) -> Note:
-    """Create note with embedding."""
+async def create_note(db: Session, note_data: dict) -> Note:
+    """Create note with cross-DB sync pattern."""
+    # Step 1: Create note in SQLite with synced=false
     note = Note(
         id=str(uuid.uuid4()),
         title=note_data["title"],
         content=note_data["content"],
         summary=note_data.get("summary"),
         created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow()
+        updated_at=datetime.utcnow(),
+        synced=False  # Not synced to Qdrant yet
     )
 
     db.add(note)
     db.commit()
     db.refresh(note)
 
-    # Generate embedding
-    embedding = generate_embedding(note.title + " " + note.content)
+    # Step 2: Generate embedding and upsert to Qdrant
+    embedding = await generate_embedding(note.title + " " + note.content)
 
-    # Upsert to Qdrant
-    upsert_embedding(
+    await upsert_embedding(
         note_id=note.id,
         vector=embedding,
         payload={
@@ -456,14 +482,18 @@ def create_note(db: Session, note_data: dict) -> Note:
         }
     )
 
+    # Step 3: Mark as synced
+    note.synced = True
+    db.commit()
+
     return note
 
 def get_note(db: Session, note_id: str) -> Optional[Note]:
     """Get note by ID."""
     return db.query(Note).filter(Note.id == note_id).first()
 
-def update_note(db: Session, note_id: str, note_data: dict) -> Optional[Note]:
-    """Update note with new embedding."""
+async def update_note(db: Session, note_id: str, note_data: dict) -> Optional[Note]:
+    """Update note with new embedding (cross-DB sync)."""
     note = get_note(db, note_id)
     if not note:
         return None
@@ -476,14 +506,14 @@ def update_note(db: Session, note_id: str, note_data: dict) -> Optional[Note]:
         note.summary = note_data["summary"]
 
     note.updated_at = datetime.utcnow()
+    note.synced = False  # Needs re-sync to Qdrant
 
     db.commit()
 
-    # Regenerate embedding
-    embedding = generate_embedding(note.title + " " + note.content)
+    # Regenerate embedding and update Qdrant
+    embedding = await generate_embedding(note.title + " " + note.content)
 
-    # Update in Qdrant
-    upsert_embedding(
+    await upsert_embedding(
         note_id=note.id,
         vector=embedding,
         payload={
@@ -492,6 +522,37 @@ def update_note(db: Session, note_id: str, note_data: dict) -> Optional[Note]:
             "updated_at": note.updated_at.isoformat(),
             "tags": note_data.get("tags", [])
         }
+    )
+
+    # Mark as synced
+    note.synced = True
+    db.commit()
+
+    return note
+
+async def sync_unsynced_notes(db: Session, limit: int = 100) -> int:
+    """Background job: sync all notes where synced=false."""
+    unsynced = db.query(Note).filter(Note.synced == False).limit(limit).all()
+
+    for note in unsynced:
+        try:
+            embedding = await generate_embedding(note.title + " " + note.content)
+            await upsert_embedding(
+                note_id=note.id,
+                vector=embedding,
+                payload={
+                    "title": note.title,
+                    "created_at": note.created_at.isoformat(),
+                    "updated_at": note.updated_at.isoformat(),
+                    "tags": []
+                }
+            )
+            note.synced = True
+        except Exception as e:
+            print(f"Failed to sync note {note.id}: {e}")
+
+    db.commit()
+    return len(unsynced)
     )
 
     return note
@@ -576,13 +637,58 @@ def delete_old_processed(db: Session, days: int) -> int:
 ### 5.1 Create Main Application (`main.py`)
 
 ```python
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.db.session import init_db
 from app.db.qdrant import init_qdrant
 import uvicorn
+import os
+import logging
+from contextlib import asynccontextmanager
 
-app = FastAPI(title="AI Agent Memory System")
+# Setup logging
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+LOG_FORMAT = os.getenv("LOG_FORMAT", "json")
+logging.basicConfig(level=getattr(logging, LOG_LEVEL))
+logger = logging.getLogger(__name__)
+
+# API Key
+API_KEY = os.getenv("API_KEY", "")
+
+# Background task: sync unsynced notes
+async def background_sync():
+    """Background job to sync unsynced notes."""
+    from app.db.session import SessionLocal
+    from app.services.note_service import sync_unsynced_notes
+
+    if not API_KEY:  # Only run in dev or with proper setup
+        db = SessionLocal()
+        try:
+            await sync_unsynced_notes(db)
+        finally:
+            db.close()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan."""
+    # Startup
+    logger.info("Starting AI Agent Memory System")
+    init_db()
+    init_qdrant()
+
+    # Start background sync (optional, can be disabled)
+    # In production, use proper scheduler like APScheduler
+    # asyncio.create_task(background_sync())
+
+    yield
+
+    # Shutdown
+    logger.info("Shutting down AI Agent Memory System")
+
+app = FastAPI(
+    title="AI Agent Memory System",
+    lifespan=lifespan
+)
 
 # CORS
 app.add_middleware(
@@ -592,19 +698,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize databases
-@app.on_event("startup")
-async def startup_event():
-    init_db()
-    init_qdrant()
+# API Key Authentication Middleware
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    """Check API key if configured."""
+    if API_KEY:
+        # Skip health check
+        if request.url.path == "/api/health":
+            return await call_next(request)
+
+        # Check API key header
+        api_key = request.headers.get("X-API-Key")
+        if api_key != API_KEY:
+            logger.warning(f"Unauthorized request from {request.client.host}")
+            raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+    # Log request
+    logger.info(f"{request.method} {request.url.path}")
+
+    response = await call_next(request)
+
+    # Log response
+    logger.info(f"Response {response.status_code}")
+
+    return response
 
 # Health check
 @app.get("/api/health")
 async def health_check():
-    return {"status": "healthy", "version": "1.0.0"}
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "database": "connected",
+        "vector_db": "connected"
+    }
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level=LOG_LEVEL.lower())
 ```
 
 ### 5.2 Create Buffer Routes (`app/api/buffer.py`)

@@ -17,13 +17,15 @@ CREATE TABLE IF NOT EXISTS notes (
     content TEXT NOT NULL,
     summary TEXT,  -- Optional summary field
     created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    updated_at DATETIME NOT NULL DEFAULT (datetime('now'))
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    synced BOOLEAN DEFAULT FALSE  -- Track Qdrant sync state
 );
 
 -- Create indexes for notes
 CREATE INDEX IF NOT EXISTS idx_notes_title ON notes(title);
 CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
+CREATE INDEX IF NOT EXISTS idx_notes_synced ON notes(synced);
 
 -- Create relation_types table
 CREATE TABLE IF NOT EXISTS relation_types (

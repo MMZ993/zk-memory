@@ -25,14 +25,20 @@ QDRANT_PORT=6333
 QDRANT_COLLECTION=notes_embeddings
 QDRANT_API_KEY=  # Optional, for remote deployment
 
-# Embeddings
-EMBEDDING_MODEL=openai:text-embedding-ada-002
+# Embeddings Provider: openai or ollama
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-ada-002
 EMBEDDING_DIMENSION=1536
 OPENAI_API_KEY=sk-...
 
-# Alternative: Local embeddings
-# EMBEDDING_MODEL=sentence-transformers:all-MiniLM-L6-v2
-# EMBEDDING_DIMENSION=384
+# Alternative: Ollama (local)
+# EMBEDDING_PROVIDER=ollama
+# EMBEDDING_MODEL=nomic-embed-text
+# EMBEDDING_DIMENSION=768
+# OLLAMA_HOST=http://localhost:11434
+
+# API Authentication
+API_KEY=  # Optional: Require X-API-Key header for all requests (leave empty to disable)
 
 # Buffer Notes
 BUFFER_RETENTION_DAYS=7  # 0 = never delete processed notes
@@ -114,31 +120,37 @@ QDRANT_API_KEY=your-api-key-here
 
 | Variable | Default | Description |
 |-----------|----------|-------------|
-| `EMBEDDING_MODEL` | openai:text-embedding-ada-002 | Embedding model to use |
+| `EMBEDDING_PROVIDER` | openai | Provider: openai or ollama |
+| `EMBEDDING_MODEL` | text-embedding-ada-002 | Embedding model to use |
 | `EMBEDDING_DIMENSION` | 1536 | Dimension of embedding vectors |
-| `OPENAI_API_KEY` | (required) | OpenAI API key (if using OpenAI model) |
+| `OPENAI_API_KEY` | (required for openai) | OpenAI API key |
+| `OLLAMA_HOST` | http://localhost:11434 | Ollama server URL |
 
-**Supported Models**:
+**Supported Providers and Models**:
 
 **OpenAI Models**:
-- `openai:text-embedding-ada-002` - 1536 dimensions
-- `openai:text-embedding-3-small` - 1536 dimensions
-- `openai:text-embedding-3-large` - 3072 dimensions
+- `text-embedding-ada-002` - 1536 dimensions
+- `text-embedding-3-small` - 1536 dimensions
+- `text-embedding-3-large` - 3072 dimensions
 
-**Sentence Transformers (Local)**:
-- `sentence-transformers:all-MiniLM-L6-v2` - 384 dimensions
-- `sentence-transformers:all-mpnet-base-v2` - 768 dimensions
+**Ollama Models**:
+- `nomic-embed-text` - 768 dimensions
+- `mxbai-embed-large` - 1024 dimensions
+- `all-minilm` - 384 dimensions
 
 **Examples**:
 ```bash
-# OpenAI (requires API key, paid)
-EMBEDDING_MODEL=openai:text-embedding-ada-002
+# OpenAI (requires API key)
+EMBEDDING_PROVIDER=openai
+EMBEDDING_MODEL=text-embedding-ada-002
 EMBEDDING_DIMENSION=1536
 OPENAI_API_KEY=sk-proj-...
 
-# Local (free, slower)
-EMBEDDING_MODEL=sentence-transformers:all-MiniLM-L6-v2
-EMBEDDING_DIMENSION=384
+# Ollama (local, free)
+EMBEDDING_PROVIDER=ollama
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMENSION=768
+OLLAMA_HOST=http://localhost:11434
 ```
 
 ### Buffer Notes
@@ -200,6 +212,31 @@ LOG_FORMAT=text
 # Production
 LOG_LEVEL=INFO
 LOG_FORMAT=json
+```
+
+### API Authentication
+
+| Variable | Default | Description |
+|-----------|----------|-------------|
+| `API_KEY` | (empty) | API key for X-API-Key header authentication |
+
+**Behavior**:
+- Empty: No authentication required (development)
+- Set: All requests require `X-API-Key` header
+
+**Examples**:
+```bash
+# Development (no auth)
+API_KEY=
+
+# Production (with auth)
+API_KEY=your-secret-api-key-here
+```
+
+**Usage**:
+```bash
+# With authentication
+curl -H "X-API-Key: your-secret-api-key-here" http://localhost:8000/api/notes
 ```
 
 ## Docker Configuration

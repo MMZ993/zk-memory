@@ -16,6 +16,8 @@ All documentation has been consolidated into clean, implementation-focused guide
 | **docs/configuration.md** | Environment variables, Docker setup | ✅ Complete |
 | **docs/project-structure.md** | Directory layout, bash scripts | ✅ Complete |
 | **docs/implementation-guide.md** | Step-by-step implementation phases | ✅ Complete |
+| **docs/testing-plan.md** | Comprehensive testing strategy | ✅ Complete |
+| **docs/backup-strategy.md** | Backup and disaster recovery plan | ✅ Complete |
 
 ### Project Files
 
@@ -42,7 +44,9 @@ agents_memory/
 │   ├── api-specification.md           # API endpoints
 │   ├── configuration.md               # Environment variables
 │   ├── project-structure.md          # Directory layout & scripts
-│   └── implementation-guide.md        # Step-by-step guide
+│   ├── implementation-guide.md        # Step-by-step guide
+│   ├── testing-plan.md               # Testing strategy and examples
+│   └── backup-strategy.md            # Backup and disaster recovery
 ├── scope.md                          # Original requirements
 └── implementation-plan.md            # Initial plan
 ```
@@ -56,6 +60,8 @@ Start with `docs/implementation-guide.md`:
 2. Reference `docs/database-schema.md` for SQL queries
 3. Reference `docs/api-specification.md` for API endpoints
 4. Reference `docs/configuration.md` for environment setup
+5. Reference `docs/testing-plan.md` for testing strategy
+6. Reference `docs/backup-strategy.md` for backup implementation
 
 ### For API Development
 
@@ -87,29 +93,65 @@ Reference `docs/project-structure.md`:
 ### 2. Database: SQLite + SQLAlchemy
 - Simple, portable, zero-configuration
 - ORM for type safety and migrations
+- Single-agent use case (no write concurrency)
 
-### 3. Update Strategy: In-Place with updated_at
+### 3. Cross-DB Sync: Two-Phase Pattern
+- `synced` boolean column in notes table tracks Qdrant state
+- Pattern: Update SQLite (synced=false) → Embed → Upsert Qdrant → Mark synced=true
+- Background job for syncing unsynced notes
+- Ensures data consistency
+
+### 4. Embedding Providers: OpenAI + Ollama
+- Async embedding generation for better performance
+- Configurable via `EMBEDDING_PROVIDER` environment variable
+- OpenAI for production (paid, fast)
+- Ollama for local development (free, slower)
+
+### 5. Update Strategy: In-Place with updated_at
 - Simplest approach for MVP
 - History can be added later if needed
 
-### 4. Relation Types: Separate Table
+### 6. Relation Types: Separate Table
 - Consistent with tags pattern
 - Extensible with metadata (description, color, bidirectional)
 
-### 5. Buffer Notes: SQLite Table
+### 7. Buffer Notes: SQLite Table
 - Fast writes without embeddings
 - Configurable retention (env variable)
 - For "dreaming" consolidation (user-managed)
 
-### 6. Markdown Export: Read-Only
-- DB is source of truth
-- Export for human viewing/editing
-- No bidirectional sync (simpler)
+### 8. Markdown Workflow
+- Primary: DB is source of truth
+- Export for human viewing (read-only)
+- Optional: Human can edit markdown files and sync back via script
+- Agents should primarily manage memory directly via API
 
-### 7. API-First Design
+### 9. API-First Design
 - System provides tools, NOT business logic
 - No LLM calls except embeddings
 - Users/agents control workflows
+
+### 10. Security: API Key Authentication
+- Optional X-API-Key header authentication
+- Configurable via `API_KEY` environment variable
+- Simple but effective for single-agent use case
+
+### 11. Search: Multi-Modal
+- Semantic: Vector similarity (default)
+- Keyword: Fuzzy search on title/content
+- Graph: Traverse note relationships by depth
+- Hybrid: Combined semantic + keyword
+
+### 12. Backup: Coordinated
+- Atomic backup of SQLite + Qdrant
+- Scheduled daily backups
+- Snapshot-based Qdrant backup
+- Configurable retention period
+
+### 13. Model Switching: Purge and Re-embed
+- Endpoint to delete all vectors and regenerate
+- For when better models become available
+- Expensive operation, requires confirmation
 
 ## Next Steps for Implementation
 
@@ -122,12 +164,15 @@ Reference `docs/project-structure.md`:
 ### Implementation Order
 
 1. **Phase 1**: Project setup, dependencies
-2. **Phase 2**: Database models and schemas
-3. **Phase 3**: Core services (buffer, notes, embeddings)
-4. **Phase 4**: API routes
+2. **Phase 2**: Database models and schemas (include `synced` column)
+3. **Phase 3**: Core services (buffer, notes, embeddings with async)
+4. **Phase 4**: API routes (with authentication middleware)
 5. **Phase 5**: Bash scripts
-6. **Phase 6**: Testing
-7. **Phase 7**: Running application
+6. **Phase 6**: Admin endpoints (backup, re-embed, sync)
+7. **Phase 7**: Search service (semantic, keyword, graph)
+8. **Phase 8**: Testing (unit, integration, e2e)
+9. **Phase 9**: Running application
+10. **Phase 10**: Backup/restore setup
 
 ### After Implementation
 
