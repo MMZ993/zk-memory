@@ -31,6 +31,9 @@ EMBEDDING_MODEL=text-embedding-ada-002
 EMBEDDING_DIMENSION=1536
 OPENAI_API_KEY=sk-...
 
+# Embedding mode: sync (block request, default) or async (return immediately, embed in background)
+EMBEDDING_MODE=sync
+
 # Alternative: Ollama (local)
 # EMBEDDING_PROVIDER=ollama
 # EMBEDDING_MODEL=nomic-embed-text
@@ -123,6 +126,7 @@ QDRANT_API_KEY=your-api-key-here
 | `EMBEDDING_PROVIDER` | openai | Provider: openai or ollama |
 | `EMBEDDING_MODEL` | text-embedding-ada-002 | Embedding model to use |
 | `EMBEDDING_DIMENSION` | 1536 | Dimension of embedding vectors |
+| `EMBEDDING_MODE` | sync | `sync`: block request until embedded; `async`: return immediately, embed in background |
 | `OPENAI_API_KEY` | (required for openai) | OpenAI API key |
 | `OLLAMA_HOST` | http://localhost:11434 | Ollama server URL |
 

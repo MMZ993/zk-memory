@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_relation_types_name ON relation_types(name);
 CREATE TABLE IF NOT EXISTS buffer_notes (
     id TEXT PRIMARY KEY,  -- UUID
     content TEXT NOT NULL,
-    metadata TEXT,  -- JSON string: {"source": "user", "tags": ["idea"]}
+    meta TEXT,  -- JSON string: {"source": "user", "tags": ["idea"]}
     created_at DATETIME NOT NULL DEFAULT (datetime('now')),
     processed BOOLEAN DEFAULT FALSE
 );
@@ -1053,96 +1053,6 @@ def get_collection_stats():
         },
         "optimizer_status": info.optimizer_status
     }
-```
-
-## Migration Scripts
-
-### Alembic Migration (SQLAlchemy)
-
-```python
-# alembic/versions/001_initial_schema.py
-
-from alembic import op
-import sqlalchemy as sa
-from sqlalchemy.dialects import sqlite
-
-revision = '001'
-down_revision = None
-branch_labels = None
-depends_on = None
-
-def upgrade():
-    # Create notes table
-    op.create_table(
-        'notes',
-        sa.Column('id', sa.String(), primary_key=True),
-        sa.Column('title', sa.String(255), nullable=False),
-        sa.Column('content', sa.Text(), nullable=False),
-        sa.Column('summary', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-    )
-    
-    # Create indexes
-    op.create_index('idx_notes_title', 'notes', ['title'])
-    op.create_index('idx_notes_created_at', 'notes', ['created_at'])
-    op.create_index('idx_notes_updated_at', 'notes', ['updated_at'])
-    
-    # Create links table
-    op.create_table(
-        'links',
-        sa.Column('id', sa.String(), primary_key=True),
-        sa.Column('source_id', sa.String(), nullable=False),
-        sa.Column('target_id', sa.String(), nullable=False),
-        sa.Column('relation_type', sa.String(50), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(['source_id'], ['notes.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['target_id'], ['notes.id'], ondelete='CASCADE'),
-    )
-    
-    # Create indexes
-    op.create_index('idx_links_source', 'links', ['source_id'])
-    op.create_index('idx_links_target', 'links', ['target_id'])
-    op.create_index('idx_links_relation_type', 'links', ['relation_type'])
-    op.create_unique_constraint('uq_link_source_target_type', 'links', ['source_id', 'target_id', 'relation_type'])
-    
-    # Create tags table
-    op.create_table(
-        'tags',
-        sa.Column('id', sa.String(), primary_key=True),
-        sa.Column('name', sa.String(100), nullable=False, unique=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-    )
-    
-    op.create_index('idx_tags_name', 'tags', ['name'])
-    
-    # Create note_tags table
-    op.create_table(
-        'note_tags',
-        sa.Column('note_id', sa.String(), primary_key=True),
-        sa.Column('tag_id', sa.String(), primary_key=True),
-        sa.Column('created_at', sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(['note_id'], ['notes.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['tag_id'], ['tags.id'], ondelete='CASCADE'),
-    )
-    
-    op.create_index('idx_note_tags_tag_id', 'note_tags', ['tag_id'])
-    
-    # Create metadata table
-    op.create_table(
-        'metadata',
-        sa.Column('key', sa.String(), primary_key=True),
-        sa.Column('value', sa.String(), nullable=False),
-        sa.Column('updated_at', sa.DateTime(), nullable=False),
-    )
-
-def downgrade():
-    op.drop_table('metadata')
-    op.drop_table('note_tags')
-    op.drop_table('tags')
-    op.drop_table('links')
-    op.drop_table('notes')
 ```
 
 ## Best Practices

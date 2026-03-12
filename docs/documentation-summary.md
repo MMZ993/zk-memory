@@ -23,7 +23,6 @@ All documentation has been consolidated into clean, implementation-focused guide
 
 | File | Purpose | Status |
 |------|---------|--------|
-| **scope.md** | Original project requirements | ✅ Kept for reference |
 | **implementation-plan.md** | Initial plan | ✅ Kept for reference |
 
 ### Removed Files (Obsolete)
@@ -39,16 +38,17 @@ All documentation has been consolidated into clean, implementation-focused guide
 ```
 agents_memory/
 ├── README.md                          # Entry point
+├── CLAUDE.md                          # Instructions for Claude sessions
+├── PROGRESS.md                        # Implementation progress tracker
 ├── docs/
-│   ├── database-schema.md               # DB schemas (SQL, SQLAlchemy)
+│   ├── database-schema.md             # DB schemas (SQL, SQLAlchemy)
 │   ├── api-specification.md           # API endpoints
 │   ├── configuration.md               # Environment variables
-│   ├── project-structure.md          # Directory layout & scripts
+│   ├── project-structure.md           # Directory layout & scripts
 │   ├── implementation-guide.md        # Step-by-step guide
-│   ├── testing-plan.md               # Testing strategy and examples
-│   └── backup-strategy.md            # Backup and disaster recovery
-├── scope.md                          # Original requirements
-└── implementation-plan.md            # Initial plan
+│   ├── testing-plan.md                # Testing strategy and examples
+│   └── backup-strategy.md             # Backup and disaster recovery
+└── implementation-plan.md             # Initial plan (reference)
 ```
 
 ## How to Use This Documentation

@@ -52,7 +52,7 @@ Fast writes without embeddings. Used for short-term memory.
 ```json
 {
   "content": "string (required)",
-  "metadata": {
+  "meta": {
     "source": "string (optional)",
     "tags": ["string"],
     "custom_field": "any"
@@ -154,13 +154,13 @@ curl -X POST http://localhost:8000/api/notes \
 
 #### Get Note
 
-**Endpoint**: `GET /api/notes/{id}`
+**Endpoint**: `GET /api/notes/get/{id}`
 
 **Response**: Note object with tags and links
 
 #### Update Note
 
-**Endpoint**: `PUT /api/notes/{id}`
+**Endpoint**: `PATCH /api/notes/{id}`
 
 **Request Body**:
 ```json
@@ -584,7 +584,7 @@ System management and monitoring.
 {
   "id": "uuid",
   "content": "text",
-  "metadata": {
+  "meta": {
     "source": "string",
     "tags": ["string"],
     "custom": "any"

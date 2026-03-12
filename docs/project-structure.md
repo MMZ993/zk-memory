@@ -13,7 +13,6 @@ agents_memory/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── main.py                  # FastAPI application entry point
-├── config.py                # Configuration management
 │
 ├── docs/                    # Documentation
 │   ├── database-schema.md
@@ -24,6 +23,10 @@ agents_memory/
 │
 ├── app/                     # Application code
 │   ├── __init__.py
+│   │
+│   ├── core/                # Config and shared utilities
+│   │   ├── __init__.py
+│   │   └── config.py        # pydantic-settings Settings class
 │   │
 │   ├── api/                 # API routes
 │   │   ├── __init__.py
@@ -99,7 +102,7 @@ agents_memory/
 | File/Directory | Purpose |
 |---------------|---------|
 | `main.py` | FastAPI application entry point, route registration |
-| `config.py` | Load and validate environment variables |
+| `app/core/config.py` | Load and validate all environment variables (pydantic-settings) |
 | `requirements.txt` | Python dependencies |
 
 ### Documentation

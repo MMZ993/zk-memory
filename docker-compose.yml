@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  agents-memory:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./data/memory.db
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=notes_embeddings
+      - EMBEDDING_PROVIDER=openai
+      - EMBEDDING_MODEL=text-embedding-ada-002
+      - EMBEDDING_DIMENSION=1536
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - BUFFER_RETENTION_DAYS=7
+      - MARKDOWN_DIR=./data/notes
+      - LOG_LEVEL=INFO
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
