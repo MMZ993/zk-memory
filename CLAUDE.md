@@ -19,7 +19,7 @@ app/
   models/     # SQLAlchemy models (database.py) + Pydantic schemas (schemas.py)
   services/   # Business logic (one file per domain)
   db/         # DB clients: session.py (SQLite), qdrant.py (Qdrant)
-  utils/      # embeddings.py, markdown.py
+  utils/      # markdown.py
 scripts/      # Bash scripts for human operations
 tests/        # test_api/, test_services/, test_utils/
 docs/         # All design docs
@@ -51,14 +51,18 @@ uvicorn main:app --reload
 pytest tests/ -v
 ```
 
+## Design Philosophy
+
+**This API is a set of primitives, not a system.** It stores, retrieves, and searches memory. All higher-level logic — deciding what to remember, when to consolidate buffer notes into permanent notes, how to manage the knowledge graph — belongs in the calling agent. This project intentionally does NOT make those decisions. Keep implementations minimal: only provide what is necessary for functioning.
+
 ## Key Design Decisions
 
-- **Cross-DB sync**: `synced` bool column on notes. Pattern: SQLite write (synced=false) → embed → upsert Qdrant → mark synced=true
+- **Cross-DB sync**: `synced` bool on notes. Written with `synced=false` → embedded → Qdrant upsert → `synced=true`. The `false` state means "not yet embedded" (new note or prior embedding failure).
 - **Embeddings**: Async, configurable via `EMBEDDING_PROVIDER=openai|ollama`
-- **Search**: 4 modes — semantic (vector), keyword (fuzzy), graph (relationship traversal), hybrid
-- **Buffer notes**: Fast writes to SQLite only (no embedding). Processed later via "dreaming"
+- **Search**: 4 modes — semantic (vector), keyword (SQLite FTS5), graph (relationship traversal), hybrid
+- **Buffer notes**: Fast writes to SQLite only (no embedding). The API provides primitives (create, list, mark-processed, cleanup). The calling agent decides when/how to promote buffer → notes.
 - **Markdown**: DB is source of truth. Export to files for human viewing; optional sync-back via scripts
-- **Backup**: Coordinated SQLite + Qdrant snapshot. See `docs/backup-strategy.md`
+- **Backup**: External. SQLite is a file — copy `data/memory.db`. Qdrant data lives in `qdrant_storage/` — copy that directory (when stopped) or use Qdrant's native snapshot API. See `docs/backup-strategy.md`.
 
 ## Implementation Rules
 
@@ -93,4 +97,4 @@ Copy `.env.example` to `.env`. Key vars:
 | `docs/project-structure.md` | Bash script specs |
 | `docs/implementation-guide.md` | Step-by-step code |
 | `docs/testing-plan.md` | Writing tests |
-| `docs/backup-strategy.md` | Admin/backup endpoints |
+| `docs/backup-strategy.md` | External backup approach |

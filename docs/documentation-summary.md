@@ -113,12 +113,13 @@ Reference `docs/project-structure.md`:
 
 ### 6. Relation Types: Separate Table
 - Consistent with tags pattern
-- Extensible with metadata (description, color, bidirectional)
+- Metadata: description, is_bidirectional (no color — no UI)
 
 ### 7. Buffer Notes: SQLite Table
 - Fast writes without embeddings
-- Configurable retention (env variable)
-- For "dreaming" consolidation (user-managed)
+- Configurable retention via `BUFFER_RETENTION_DAYS` (0 = cleanup disabled)
+- `DELETE /api/buffer/cleanup` triggers cleanup based on env var (no query params)
+- Buffer→Note promotion is the calling agent's responsibility; this API only provides primitives
 
 ### 8. Markdown Workflow
 - Primary: DB is source of truth
@@ -138,15 +139,15 @@ Reference `docs/project-structure.md`:
 
 ### 11. Search: Multi-Modal
 - Semantic: Vector similarity (default)
-- Keyword: Fuzzy search on title/content
+- Keyword: SQLite FTS5 full-text search on title/content
 - Graph: Traverse note relationships by depth
 - Hybrid: Combined semantic + keyword
 
-### 12. Backup: Coordinated
-- Atomic backup of SQLite + Qdrant
-- Scheduled daily backups
-- Snapshot-based Qdrant backup
-- Configurable retention period
+### 12. Backup: External
+- No backup API endpoints. Backup is managed by external tools.
+- SQLite: copy `data/memory.db` (or use `sqlite3 .backup`)
+- Qdrant: copy `qdrant_storage/` when stopped, or use Qdrant's native snapshot REST API
+- See `docs/backup-strategy.md` for scripts and instructions
 
 ### 13. Model Switching: Purge and Re-embed
 - Endpoint to delete all vectors and regenerate

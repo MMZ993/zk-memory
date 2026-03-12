@@ -10,12 +10,13 @@
 | 2 | Database models (SQLAlchemy + Qdrant client) | ✅ Complete |
 | 3 | Core services (buffer, notes, embeddings, links, tags) | ⬜ Not started |
 | 4 | API routes (buffer, notes, links, tags, search, export) | ⬜ Not started |
-| 5 | Bash scripts (export, sync, backup, manage) | ⬜ Not started |
-| 6 | Admin endpoints (health, stats, backup, re-embed, sync) | ⬜ Not started |
-| 7 | Search service (semantic, keyword, graph, hybrid) | ⬜ Not started |
-| 8 | Testing (unit, integration, e2e) | ⬜ Not started |
-| 9 | Running application (verification) | ⬜ Not started |
-| 10 | Backup & monitoring setup | ⬜ Not started |
+| 5 | Admin endpoints (health, stats, re-embed, sync) | ⬜ Not started |
+| 6 | Search service (semantic, keyword/FTS5, graph, hybrid) | ⬜ Not started |
+| 7 | Testing (unit, integration, e2e) | ⬜ Not started |
+| 8 | Running application (verification) | ⬜ Not started |
+| 9 | Bash scripts for human operations (optional, defer) | ⬜ Not started |
+
+> **Backup**: External — copy `data/memory.db` (SQLite) and `qdrant_storage/` (Qdrant). See `docs/backup-strategy.md`.
 
 ## Current State
 

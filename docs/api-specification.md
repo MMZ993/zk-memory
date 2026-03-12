@@ -68,7 +68,7 @@ curl -X POST http://localhost:8000/api/buffer \
   -H "Content-Type: application/json" \
   -d '{
     "content": "Remember: User prefers morning meetings",
-    "metadata": {"source": "conversation", "importance": "high"}
+    "meta": {"source": "conversation", "importance": "high"}
   }'
 ```
 
@@ -99,13 +99,22 @@ curl -X POST http://localhost:8000/api/buffer \
 
 **Endpoint**: `POST /api/buffer/{id}/process`
 
-**Response**: Success message
+**Response**: Updated BufferNote object (with `processed=true` and `processed_at` set)
 
-#### Export Buffer Notes
+#### Cleanup Processed Buffer Notes
 
-**Endpoint**: `GET /api/buffer/export`
+**Endpoint**: `DELETE /api/buffer/cleanup`
 
-**Response**: Markdown files (text/markdown)
+> **Implementation note**: Register `/cleanup` route *before* `/{id}`, otherwise the literal string `"cleanup"` will be matched as a buffer note ID.
+
+**Description**: Deletes processed buffer notes older than `BUFFER_RETENTION_DAYS`. If `BUFFER_RETENTION_DAYS=0`, cleanup is disabled and returns `{"deleted": 0, "disabled": true}`.
+
+**Response**:
+```json
+{
+  "deleted": 5
+}
+```
 
 ### Notes
 
@@ -154,7 +163,9 @@ curl -X POST http://localhost:8000/api/notes \
 
 #### Get Note
 
-**Endpoint**: `GET /api/notes/get/{id}`
+**Endpoint**: `GET /api/notes/{id}`
+
+> **Implementation note**: Register the `/search` route *before* `/{id}` in FastAPI, otherwise the literal string `"search"` will be matched as a note ID.
 
 **Response**: Note object with tags and links
 
@@ -195,7 +206,7 @@ curl -X POST http://localhost:8000/api/notes \
 
 **Search Types**:
 - `semantic`: Vector similarity search (requires `q`)
-- `keyword`: Fuzzy search on title and content (requires `q`)
+- `keyword`: Full-text search using SQLite FTS5 on title and content (requires `q`)
 - `hybrid`: Combined semantic + keyword (default, requires `q`)
 - `graph`: Find connected notes (requires `graph_start_id`, optionally `q`)
 
@@ -294,11 +305,13 @@ Manage note tags.
 **Request Body**:
 ```json
 {
-  "tag_id": "uuid (required)"
+  "name": "string (required)"
 }
 ```
 
-**Response**: Success message
+**Note**: If the tag doesn't exist it will be created automatically. Returns the tag object (including its UUID).
+
+**Response**: Tag object
 
 #### Remove Tag from Note
 
@@ -325,7 +338,6 @@ Manage link relationship types.
 {
   "name": "string (required, unique)",
   "description": "string (optional)",
-  "color": "string (optional, hex: #FF5733)",
   "is_bidirectional": "boolean (optional, default: false)"
 }
 ```
@@ -347,7 +359,6 @@ Manage link relationship types.
 {
   "name": "string (optional)",
   "description": "string (optional)",
-  "color": "string (optional)",
   "is_bidirectional": "boolean (optional)"
 }
 ```
@@ -370,32 +381,25 @@ Manage markdown files for human viewing/editing.
 
 **Endpoint**: `GET /api/export`
 
-**Response**: Markdown files (text/markdown)
+**Response**: Single JSON array of all notes (with tags) — `Content-Type: application/json`
 
 #### Export Notes Only
 
 **Endpoint**: `GET /api/export/notes`
 
-**Response**: Markdown files (text/markdown)
+**Response**: Single JSON array of notes — `Content-Type: application/json`
 
 #### Export Buffer Notes
 
 **Endpoint**: `GET /api/export/buffer`
 
-**Response**: Markdown files (text/markdown)
+**Response**: Single JSON array of buffer notes — `Content-Type: application/json`
+
+> **Note**: Export returns JSON, not markdown files. Markdown rendering is a client/agent concern. The DB is the source of truth; there is no markdown import/export pathway in the API.
 
 #### Import from Markdown
 
-**Endpoint**: `POST /api/import`
-
-**Request Body**:
-```json
-{
-  "directory": "string (optional, default: ./notes)"
-}
-```
-
-**Response**: Import results with success/error counts
+**Endpoint**: Not implemented. Import is done via the database directly or via `POST /api/notes` in bulk. A server-side directory path over HTTP is not a safe or clean primitive.
 
 ### Admin
 
@@ -424,6 +428,8 @@ System management and monitoring.
 {
   "notes": {
     "total": 1000,
+    "synced": 985,
+    "unsynced": 15,
     "created_today": 5,
     "updated_today": 10
   },
@@ -446,70 +452,24 @@ System management and monitoring.
 }
 ```
 
-#### Cleanup Processed Buffer Notes
-
-**Endpoint**: `DELETE /api/buffer/processed`
-
-**Query Parameters**:
-- `days` (integer, optional, default: from env) - Delete processed notes older than N days
-
-**Response**: Success message with count of deleted notes
-
 #### Get Configuration
 
 **Endpoint**: `GET /api/config`
 
-**Response**: Current configuration values
-
-#### Create Backup
-
-**Endpoint**: `POST /api/admin/backup`
-
-**Description**: Create backup of SQLite database and Qdrant snapshot
-
-**Request Body**:
+**Response**: Safe subset of current configuration — never exposes secrets.
 ```json
 {
-  "name": "string (optional, default: auto-generated timestamp)"
+  "embedding_provider": "openai",
+  "embedding_model": "text-embedding-ada-002",
+  "embedding_dimension": 1536,
+  "embedding_mode": "async",
+  "buffer_retention_days": 7,
+  "debug": false,
+  "version": "1.0.0"
 }
 ```
 
-**Response**:
-```json
-{
-  "backup_id": "backup_20240120_143000",
-  "sqlite_path": "./data/backups/memory_20240120_143000.db",
-  "qdrant_snapshot": "snapshot-20240120-143000",
-  "created_at": "2024-01-20T14:30:00Z"
-}
-```
-
-#### List Backups
-
-**Endpoint**: `GET /api/admin/backups`
-
-**Response**:
-```json
-{
-  "backups": [
-    {
-      "backup_id": "backup_20240120_143000",
-      "sqlite_path": "./data/backups/memory_20240120_143000.db",
-      "qdrant_snapshot": "snapshot-20240120-143000",
-      "created_at": "2024-01-20T14:30:00Z",
-      "size_mb": 1.5
-    }
-  ]
-}
-```
-
-#### Restore Backup
-
-**Endpoint**: `POST /api/admin/restore/{backup_id}`
-
-**Description**: Restore from backup (stops services during restore)
-
-**Response**: Success message
+> **Never include**: `api_key`, `openai_api_key`, `qdrant_api_key`, `database_url`, or any credential field.
 
 #### Purge and Re-embed All Notes
 
@@ -530,8 +490,7 @@ System management and monitoring.
 ```json
 {
   "status": "started",
-  "total_notes": 1000,
-  "estimated_time_seconds": 300
+  "total_notes": 1000
 }
 ```
 
@@ -542,13 +501,11 @@ System management and monitoring.
 **Response**:
 ```json
 {
-  "status": "in_progress",
-  "total_notes": 1000,
-  "processed": 450,
-  "failed": 2,
-  "progress_percent": 45
+  "status": "in_progress"  // or "finished" or "idle"
 }
 ```
+
+> Status is stored in the `metadata` table (`key = "reembed_status"`). Simple: `idle` → `in_progress` → `finished`.
 
 #### Sync Unprocessed Notes
 
@@ -575,9 +532,12 @@ System management and monitoring.
   "summary": "string (optional)",
   "tags": ["string"],
   "created_at": "ISO 8601 datetime",
-  "updated_at": "ISO 8601 datetime"
+  "updated_at": "ISO 8601 datetime",
+  "synced": "boolean"
 }
 ```
+
+> `synced=false` means the note has not been embedded yet (just created, or prior embedding failed). `synced=true` means the vector in Qdrant is up to date.
 
 ### BufferNote
 ```json
@@ -590,7 +550,9 @@ System management and monitoring.
     "custom": "any"
   },
   "created_at": "ISO 8601 datetime",
-  "processed": "boolean"
+  "updated_at": "ISO 8601 datetime",
+  "processed": "boolean",
+  "processed_at": "ISO 8601 datetime | null"
 }
 ```
 
@@ -605,7 +567,6 @@ System management and monitoring.
     "id": "uuid",
     "name": "string",
     "description": "string",
-    "color": "string",
     "is_bidirectional": "boolean"
   },
   "description": "string (optional)",
@@ -629,7 +590,6 @@ System management and monitoring.
   "id": "uuid",
   "name": "string",
   "description": "string",
-  "color": "string",
   "is_bidirectional": "boolean",
   "link_count": "integer",
   "created_at": "ISO 8601 datetime"

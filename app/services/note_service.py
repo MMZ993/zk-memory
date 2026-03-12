@@ -1,6 +1,10 @@
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 from sqlalchemy.orm import Session
 
@@ -29,10 +33,10 @@ def _save_tags(db: Session, note_id: str, tag_names: list[str]):
     for name in tag_names:
         tag = db.query(Tag).filter(Tag.name == name).first()
         if not tag:
-            tag = Tag(id=str(uuid.uuid4()), name=name, created_at=datetime.utcnow())
+            tag = Tag(id=str(uuid.uuid4()), name=name, created_at=_now())
             db.add(tag)
             db.flush()
-        db.add(NoteTag(note_id=note_id, tag_id=tag.id, created_at=datetime.utcnow()))
+        db.add(NoteTag(note_id=note_id, tag_id=tag.id, created_at=_now()))
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -67,8 +71,8 @@ async def create_note(db: Session, note_data: dict, background_tasks=None) -> No
         title=note_data["title"],
         content=note_data["content"],
         summary=note_data.get("summary"),
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=_now(),
+        updated_at=_now(),
         synced=False,
     )
     db.add(note)
@@ -100,7 +104,7 @@ async def update_note(db: Session, note_id: str, note_data: dict, background_tas
         if field in note_data:
             setattr(note, field, note_data[field])
 
-    note.updated_at = datetime.utcnow()
+    note.updated_at = _now()
     note.synced = False
 
     if "tags" in note_data:

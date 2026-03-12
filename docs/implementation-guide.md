@@ -284,7 +284,6 @@ class RelationType(Base):
     id = Column(String(36), primary_key=True, default=new_uuid)
     name = Column(String(100), unique=True, nullable=False)
     description = Column(Text, nullable=True)
-    color = Column(String(7), nullable=True)
     is_bidirectional = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -328,7 +327,9 @@ class BufferNote(Base):
     content = Column(Text, nullable=False)
     meta = Column(JSON, nullable=True)  # renamed from metadata to avoid SQLAlchemy reserved attr
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     processed = Column(Boolean, default=False, nullable=False)
+    processed_at = Column(DateTime, nullable=True)
 
 
 class Metadata(Base):
@@ -342,7 +343,7 @@ class Metadata(Base):
 ### 2.2 Create Database Session (`app/db/session.py`)
 
 ```python
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.models.database import Base
 from app.core.config import get_settings
@@ -360,6 +361,32 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Create FTS5 virtual table and triggers for keyword search (not managed by SQLAlchemy)
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+                note_id UNINDEXED,
+                title,
+                content
+            )
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON notes BEGIN
+                INSERT INTO notes_fts(note_id, title, content) VALUES (new.id, new.title, new.content);
+            END
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON notes BEGIN
+                DELETE FROM notes_fts WHERE note_id = old.id;
+                INSERT INTO notes_fts(note_id, title, content) VALUES (new.id, new.title, new.content);
+            END
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON notes BEGIN
+                DELETE FROM notes_fts WHERE note_id = old.id;
+            END
+        """))
+        conn.commit()
 
 
 def get_db() -> Session:
@@ -820,14 +847,24 @@ async def search_semantic(
 
 
 def search_keyword(db: Session, query: str, limit: int = 10) -> list[Note]:
-    """Case-insensitive LIKE search on title and content."""
-    pattern = f"%{query}%"
-    return (
-        db.query(Note)
-        .filter(or_(Note.title.ilike(pattern), Note.content.ilike(pattern)))
-        .limit(limit)
-        .all()
-    )
+    """Full-text search using SQLite FTS5. Results ranked by relevance."""
+    from sqlalchemy import text
+    # FTS5 MATCH uses the query string directly; quote it to handle special chars
+    safe_query = query.replace('"', '""')
+    sql = text("""
+        SELECT n.id FROM notes n
+        JOIN notes_fts fts ON n.id = fts.note_id
+        WHERE notes_fts MATCH :q
+        ORDER BY rank
+        LIMIT :limit
+    """)
+    rows = db.execute(sql, {"q": f'"{safe_query}"', "limit": limit}).fetchall()
+    note_ids = [r[0] for r in rows]
+    if not note_ids:
+        return []
+    # Fetch full Note objects preserving rank order
+    notes_map = {n.id: n for n in db.query(Note).filter(Note.id.in_(note_ids)).all()}
+    return [notes_map[nid] for nid in note_ids if nid in notes_map]
 
 
 def search_graph(db: Session, start_note_id: str, depth: int = 1) -> list[Note]:
@@ -1031,7 +1068,7 @@ async def create_note_endpoint(
     return await create_note(db, note.model_dump(), background_tasks)
 
 
-@router.get("/get/{note_id}", response_model=NoteResponse)
+@router.get("/{note_id}", response_model=NoteResponse)
 def get_note_endpoint(note_id: str, db: Session = Depends(get_db)):
     note = get_note(db, note_id)
     if not note:
@@ -1428,7 +1465,6 @@ def create_relation(db: Session, data: dict) -> RelationType:
         id=str(uuid.uuid4()),
         name=data["name"],
         description=data.get("description"),
-        color=data.get("color"),
         is_bidirectional=data.get("is_bidirectional", False),
         created_at=datetime.utcnow(),
     )
@@ -1442,7 +1478,7 @@ def update_relation(db: Session, relation_id: str, data: dict) -> RelationType |
     rt = get_relation(db, relation_id)
     if not rt:
         return None
-    for field in ("name", "description", "color", "is_bidirectional"):
+    for field in ("name", "description", "is_bidirectional"):
         if field in data:
             setattr(rt, field, data[field])
     db.commit()
@@ -1889,7 +1925,7 @@ def list_notes_endpoint(
     return list_notes(db, tags=tag_list, sort=sort, order=order, **page)
 
 
-@router.get("/get/{note_id}", response_model=NoteResponse)
+@router.get("/{note_id}", response_model=NoteResponse)
 def get_note_endpoint(note_id: str, db: Session = Depends(get_db)):
     note = get_note(db, note_id)
     if not note:
@@ -1987,14 +2023,13 @@ def list_buffer_notes(
     return get_buffer_notes(db, processed=processed, **page)
 
 
-# NOTE: /processed must be declared BEFORE /{note_id} or FastAPI will
-# match "processed" as a note_id parameter.
-@router.delete("/processed")
-def cleanup_processed_notes(
-    days: int | None = Query(default=None),
-    db: Session = Depends(get_db),
-):
-    retention = days or get_settings().buffer_retention_days
+# NOTE: /cleanup must be declared BEFORE /{note_id} or FastAPI will
+# match "cleanup" as a note_id parameter.
+@router.delete("/cleanup")
+def cleanup_processed_notes(db: Session = Depends(get_db)):
+    retention = get_settings().buffer_retention_days
+    if retention == 0:
+        return {"deleted": 0, "disabled": True}
     count = delete_old_processed(db, retention)
     return {"deleted": count}
 
@@ -2077,14 +2112,12 @@ router = APIRouter(prefix="/api/relations", tags=["relations"])
 class RelationTypeCreate(BaseModel):
     name: str
     description: Optional[str] = None
-    color: Optional[str] = None
     is_bidirectional: bool = False
 
 
 class RelationTypeUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
-    color: Optional[str] = None
     is_bidirectional: Optional[bool] = None
 
 
@@ -2093,7 +2126,6 @@ class RelationTypeResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
-    color: Optional[str] = None
     is_bidirectional: bool
     created_at: datetime
     link_count: int = 0

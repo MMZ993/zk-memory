@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS notes (
     summary TEXT,  -- Optional summary field
     created_at DATETIME NOT NULL DEFAULT (datetime('now')),
     updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    synced BOOLEAN DEFAULT FALSE  -- Track Qdrant sync state
+    synced BOOLEAN DEFAULT FALSE  -- false = not yet embedded; true = Qdrant vector is current
 );
 
 -- Create indexes for notes
@@ -27,12 +27,43 @@ CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes(created_at);
 CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
 CREATE INDEX IF NOT EXISTS idx_notes_synced ON notes(synced);
 
+-- Create FTS5 virtual table for keyword search
+-- Indexes: title + content only.
+-- Tags are NOT included: they live in a normalized junction table and have their own
+-- indexed lookup path. Denormalizing tags into FTS5 would complicate triggers and
+-- create sync issues on tag add/remove without note update.
+-- FTS5 is NOT fuzzy (no edit-distance). It provides:
+--   - Full-text tokenization + BM25 ranking
+--   - Prefix queries: "term*"
+--   - Phrase queries: "exact phrase"
+--   - Boolean: AND / OR / NOT
+-- True typo-tolerance belongs in the calling agent or via semantic search (Qdrant).
+CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts USING fts5(
+    note_id UNINDEXED,
+    title,
+    content
+);
+
+-- Triggers to keep FTS5 in sync with notes table
+CREATE TRIGGER IF NOT EXISTS notes_fts_insert AFTER INSERT ON notes BEGIN
+    INSERT INTO notes_fts(note_id, title, content) VALUES (new.id, new.title, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS notes_fts_update AFTER UPDATE ON notes BEGIN
+    DELETE FROM notes_fts WHERE note_id = old.id;
+    INSERT INTO notes_fts(note_id, title, content) VALUES (new.id, new.title, new.content);
+END;
+
+CREATE TRIGGER IF NOT EXISTS notes_fts_delete AFTER DELETE ON notes BEGIN
+    DELETE FROM notes_fts WHERE note_id = old.id;
+END;
+
 -- Create relation_types table
+-- Note: `color` field removed — no UI layer exists to consume it.
 CREATE TABLE IF NOT EXISTS relation_types (
     id TEXT PRIMARY KEY,  -- UUID
     name TEXT NOT NULL UNIQUE,
     description TEXT,
-    color TEXT,  -- For visualization/UI
     is_bidirectional BOOLEAN DEFAULT FALSE,
     created_at DATETIME NOT NULL DEFAULT (datetime('now'))
 );
@@ -46,7 +77,9 @@ CREATE TABLE IF NOT EXISTS buffer_notes (
     content TEXT NOT NULL,
     meta TEXT,  -- JSON string: {"source": "user", "tags": ["idea"]}
     created_at DATETIME NOT NULL DEFAULT (datetime('now')),
-    processed BOOLEAN DEFAULT FALSE
+    updated_at DATETIME NOT NULL DEFAULT (datetime('now')),
+    processed BOOLEAN DEFAULT FALSE,
+    processed_at DATETIME  -- Set when marked as processed
 );
 
 -- Create indexes for buffer_notes
@@ -136,27 +169,19 @@ GROUP BY n.id
 ORDER BY n.updated_at DESC
 LIMIT ? OFFSET ?;
 
--- Search notes by title (keyword search)
-SELECT 
+-- Keyword search using FTS5 (title and content, ranked by relevance)
+-- The `rank` column is provided by FTS5 automatically
+SELECT
     n.*,
     GROUP_CONCAT(t.name) as tags
 FROM notes n
+JOIN notes_fts fts ON n.id = fts.note_id
 LEFT JOIN note_tags nt ON n.id = nt.note_id
 LEFT JOIN tags t ON nt.tag_id = t.id
-WHERE n.title LIKE ?
+WHERE notes_fts MATCH ?
 GROUP BY n.id
-ORDER BY n.updated_at DESC;
-
--- Search notes by content (keyword search)
-SELECT 
-    n.*,
-    GROUP_CONCAT(t.name) as tags
-FROM notes n
-LEFT JOIN note_tags nt ON n.id = nt.note_id
-LEFT JOIN tags t ON nt.tag_id = t.id
-WHERE n.content LIKE ?
-GROUP BY n.id
-ORDER BY n.updated_at DESC;
+ORDER BY rank
+LIMIT ?;
 
 -- Search notes by tags
 SELECT 
@@ -193,7 +218,7 @@ SELECT
     l.relation_type_id,
     rt.name as relation_name,
     rt.description as relation_description,
-    rt.color as relation_color,
+
     rt.is_bidirectional,
     l.description as link_description,
     l.created_at,
@@ -224,7 +249,7 @@ SELECT
     l.relation_type_id,
     rt.name as relation_name,
     rt.description as relation_description,
-    rt.color as relation_color,
+
     rt.is_bidirectional,
     l.description as link_description,
     l.created_at,
@@ -244,7 +269,7 @@ SELECT
     l.relation_type_id,
     rt.name as relation_name,
     rt.description as relation_description,
-    rt.color as relation_color,
+
     rt.is_bidirectional,
     l.description as link_description,
     l.created_at,
@@ -264,7 +289,7 @@ SELECT
     l.relation_type_id,
     rt.name as relation_name,
     rt.description as relation_description,
-    rt.color as relation_color,
+
     rt.is_bidirectional,
     l.description as link_description,
     l.created_at,
@@ -355,7 +380,6 @@ WHERE name = ?;
 SELECT 
     rt.name,
     rt.description,
-    rt.color,
     rt.is_bidirectional,
     COUNT(l.id) as usage_count
 FROM relation_types rt
@@ -444,7 +468,7 @@ ORDER BY created_at DESC;
 -- Get buffer notes by metadata (JSON search)
 SELECT *
 FROM buffer_notes
-WHERE metadata LIKE ?
+WHERE meta LIKE ?
 ORDER BY created_at DESC;
 
 -- Delete processed buffer notes older than N days
@@ -454,17 +478,17 @@ AND datetime(created_at) < datetime('now', '-' || ? || ' days');
 
 -- Mark buffer note as processed
 UPDATE buffer_notes
-SET processed = TRUE
+SET processed = TRUE, processed_at = datetime('now'), updated_at = datetime('now')
 WHERE id = ?;
 
 -- Mark all buffer notes as processed
 UPDATE buffer_notes
-SET processed = TRUE
+SET processed = TRUE, processed_at = datetime('now'), updated_at = datetime('now')
 WHERE processed = FALSE;
 
 -- Mark all unprocessed buffer notes older than N hours as processed
 UPDATE buffer_notes
-SET processed = TRUE
+SET processed = TRUE, processed_at = datetime('now'), updated_at = datetime('now')
 WHERE processed = FALSE
 AND datetime(created_at) < datetime('now', '-' || ? || ' hours');
 ```
@@ -631,8 +655,8 @@ INSERT INTO notes (id, title, content, summary)
 VALUES (?, ?, ?, ?);
 
 -- Insert relation type
-INSERT INTO relation_types (id, name, description, color, is_bidirectional)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO relation_types (id, name, description, is_bidirectional)
+VALUES (?, ?, ?, ?);
 
 -- Insert link
 INSERT INTO links (id, source_id, target_id, relation_type_id, description)
@@ -647,7 +671,7 @@ INSERT INTO note_tags (note_id, tag_id)
 VALUES (?, ?);
 
 -- Insert buffer note
-INSERT INTO buffer_notes (id, content, metadata)
+INSERT INTO buffer_notes (id, content, meta)
 VALUES (?, ?, ?);
 ```
 
@@ -661,7 +685,7 @@ WHERE id = ?;
 
 -- Update relation type
 UPDATE relation_types
-SET name = ?, description = ?, color = ?, is_bidirectional = ?
+SET name = ?, description = ?, is_bidirectional = ?
 WHERE id = ?;
 
 -- Update link

@@ -1,56 +1,37 @@
 # Implementation Gaps
 
-Short backlog of items not yet covered in the main implementation guide. Work through these after the core phases are done.
+## Resolved
 
-## Missing Endpoints
+- ~~Route naming: `GET /api/notes/get/{id}` non-RESTful~~ → Fixed: `GET /api/notes/{id}`, search registered before /{id}
+- ~~`DELETE /api/buffer/processed` query param~~ → Fixed: `DELETE /api/buffer/cleanup` reads `BUFFER_RETENTION_DAYS` from env (0 = disabled)
+- ~~Re-embed status has no backing store~~ → Fixed: stored in `metadata` table as `reembed_status` key (idle/in_progress/finished)
+- ~~Keyword search described as fuzzy but used LIKE~~ → Fixed: uses SQLite FTS5
+- ~~`color` field on RelationType implies UI that doesn't exist~~ → Removed
+- ~~Two embedding files: `utils/embeddings.py` + `services/embedding_service.py`~~ → Use only `services/embedding_service.py`
+- ~~Backup API endpoints not implementable cleanly~~ → Removed; backup is external (file copy). See `docs/backup-strategy.md`
+- ~~`synced` semantics unclear~~ → Documented: `false` = not yet embedded; `true` = Qdrant vector is current
+- ~~Add-tag requires UUID but create-note accepts names~~ → Fixed: `POST /api/notes/{id}/tags` accepts `{"name": "string"}` and auto-creates
+- ~~No `updated_at`/`processed_at` on buffer notes~~ → Added both columns
+- ~~Duplicate buffer export endpoint~~ → Removed `GET /api/buffer/export`; canonical is `GET /api/export/buffer`
 
-**Resolved** — implementation spec written in `docs/implementation-guide.md` Phase 10.
+## Open / Future
 
-All endpoints below now have service + route code in Phase 10:
+- No rate limiting or request body size limits — relevant if exposing over network
+- ~~Package version pins are from late 2023~~ → Updated to match installed versions (2026-03-12)
+- Bash scripts deferred to Phase 9 (optional)
 
-- `GET /api/notes` — list notes (Phase 10.1 / 10.10)
-- `GET /api/buffer/{id}` — get single buffer note (Phase 10.2 / 10.11)
-- `DELETE /api/buffer/{id}` — delete buffer note (Phase 10.2 / 10.11)
-- `GET /api/notes/{id}/links` — get note's links with direction filter (Phase 10.5 / 10.10)
-- `GET /api/notes/{id}/tags` — get note's tags (Phase 10.3 / 10.10)
-- `POST /api/notes/{id}/tags` — add tag to note (Phase 10.3 / 10.10)
-- `DELETE /api/notes/{id}/tags/{tag_id}` — remove tag from note (Phase 10.3 / 10.10)
-- `GET /api/tags` — list tags with usage counts (Phase 10.3 / 10.12)
-- `POST /api/tags` — create standalone tag (Phase 10.3 / 10.12)
-- `GET /api/relations` — list relation types with link counts (Phase 10.4 / 10.13)
-- `POST /api/relations` — create relation type (Phase 10.4 / 10.13)
-- `GET /api/relations/{id}` — get relation type (Phase 10.4 / 10.13)
-- `PATCH /api/relations/{id}` — update relation type (Phase 10.4 / 10.13)
-- `DELETE /api/relations/{id}` — delete relation type restricted if links exist (Phase 10.4 / 10.13)
-- `GET /api/export` — export all notes to markdown zip (Phase 10.6 / 10.14)
-- `GET /api/export/notes` — export notes only (Phase 10.6 / 10.14)
-- `GET /api/export/buffer` — export buffer notes (Phase 10.6 / 10.14)
-- `POST /api/import` — import from markdown directory (Phase 10.6 / 10.14)
-- `GET /api/stats` — system statistics (Phase 10.8 / 10.15)
-- `GET /api/config` — current configuration values (Phase 10.8 / 10.15)
-- `DELETE /api/buffer/processed` — cleanup old processed buffer notes (Phase 10.2 / 10.11)
-- `GET /api/admin/backups` — list backups (Phase 10.8 / 10.15)
-- `POST /api/admin/restore/{id}` — restore from backup (Phase 10.8 / 10.15)
-- `POST /api/admin/reembed` — purge and regenerate all embeddings (Phase 10.8 / 10.15)
-- `GET /api/admin/reembed/status` — re-embed job progress (Phase 10.8 / 10.15)
-- `POST /api/admin/sync-embeddings` — trigger sync for unsynced notes (Phase 10.8 / 10.15)
+## Dependency Compatibility Notes (for coding phases)
 
-## Services with No Implementation Spec
+### openai 2.x (installed: 2.26.0, was pinned at >=1.3.0)
+- Client instantiation: `openai.AsyncOpenAI(api_key=...)` — same as v1, still works
+- Embeddings call: `client.embeddings.create(model=..., input=...)` — same as v1
+- **Breaking change**: Response type for embeddings changed — use `.data[0].embedding` (same) but `model` field and usage metadata differ slightly
+- **Breaking change**: v2 removed several deprecated methods and moved some types — check `openai.types.create_embedding_response` if accessing response metadata
+- When writing `embedding_service.py`: use `AsyncOpenAI`, call `await client.embeddings.create(...)`, access result as `response.data[0].embedding`
 
-**Resolved** — spec written in Phase 10:
-
-- `app/services/export_service.py` — Phase 10.6
-- `app/utils/markdown.py` — Phase 10.7
-
-## Database
-
-- ~~**SQLite WAL mode**~~ ✅ Fixed — `PRAGMA journal_mode=WAL` added to `app/db/session.py` via `@event.listens_for(engine, "connect")`
-- ~~**Qdrant payload drift**~~ ✅ Fixed — `_build_qdrant_payload()` helper in `app/services/note_service.py` used by both `_embed_and_sync` and `sync_unsynced_notes`; both now include `content_length` and `summary`
-
-## Search
-
-- ~~**Graph depth limit**~~ ✅ Fixed — `MAX_GRAPH_DEPTH = 3` hard cap enforced in `search_graph()` (Phase 10.9); configurable down via `graph_depth` param (1–3), never up
-
-## Other
-
-- No rate limiting or request body size limits defined — relevant if exposing over network
+### pytest-asyncio 1.x (installed: 1.3.0, was pinned at >=0.21.0)
+- `asyncio_mode = "auto"` is now set in `pyproject.toml` under `[tool.pytest.ini_options]` — already added
+- In v1.x, the `@pytest.mark.asyncio` decorator is no longer required on individual tests (auto mode handles it)
+- `pytest.fixture` async fixtures work without `@pytest_asyncio.fixture` in auto mode
+- **Breaking**: `event_loop` fixture scope changed — don't override `event_loop` fixture; use `anyio` backend or accept per-test loops
+- When writing tests: just `async def test_foo():` works without any decorator
