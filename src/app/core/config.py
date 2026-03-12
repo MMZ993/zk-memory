@@ -20,12 +20,16 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
 
     # Embeddings
-    embedding_provider: str = "openai"  # openai | ollama
-    embedding_model: str = "text-embedding-ada-002"
-    embedding_dimension: int = 1536
+    # Provider: "ollama" (default, local) | "openai" (cloud, requires API key)
+    # Ollama model: nomic-embed-text (768-dim, fast, production-ready for home lab)
+    #   Alternative: mxbai-embed-large (1024-dim, higher quality, more VRAM)
+    # OpenAI model: text-embedding-ada-002 (1536-dim) — not used by default
+    embedding_provider: str = "ollama"
+    embedding_model: str = "nomic-embed-text"
+    embedding_dimension: int = 768
     embedding_mode: str = "sync"  # sync | async
-    openai_api_key: str = ""
     ollama_host: str = "http://localhost:11434"
+    openai_api_key: str = ""  # only needed if embedding_provider=openai
 
     # Buffer
     buffer_retention_days: int = 7

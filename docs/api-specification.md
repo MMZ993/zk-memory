@@ -196,19 +196,16 @@ curl -X POST http://localhost:8000/api/notes \
 **Endpoint**: `GET /api/notes/search`
 
 **Query Parameters**:
-- `q` (string, optional) - Search query for semantic search
-- `tags` (string, optional) - Comma-separated tag names
+- `q` (string, required) - Search query text
+- `tags` (string, optional) - Comma-separated tag names to filter results
 - `limit` (integer, optional, default: 10)
 - `threshold` (float, optional, default: 0.7) - Minimum similarity score (0-1)
-- `search_type` (string, optional, default: hybrid) - semantic, keyword, hybrid, graph
-- `graph_depth` (integer, optional, default: 1) - For graph search: levels to traverse (1-3)
-- `graph_start_id` (string, optional) - For graph search: starting note ID
+- `search_type` (string, optional, default: hybrid) - semantic, keyword, or hybrid
 
 **Search Types**:
-- `semantic`: Vector similarity search (requires `q`)
-- `keyword`: Full-text search using SQLite FTS5 on title and content (requires `q`)
-- `hybrid`: Combined semantic + keyword (default, requires `q`)
-- `graph`: Find connected notes (requires `graph_start_id`, optionally `q`)
+- `semantic`: Vector similarity search via Qdrant
+- `keyword`: Full-text search using SQLite FTS5 on title and content
+- `hybrid`: Combined semantic + keyword (default)
 
 **Response**:
 ```json
@@ -218,9 +215,43 @@ curl -X POST http://localhost:8000/api/notes \
       "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Understanding Neural Networks",
       "content": "...",
+      "summary": "...",
       "score": 0.95,
       "tags": ["ml", "deep-learning"],
-      "distance": 1  // For graph search
+      "links": [],
+      "synced": true,
+      "created_at": "2024-01-20T14:30:00Z",
+      "updated_at": "2024-01-20T14:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+#### Get Connected Notes (Graph Traversal)
+
+**Endpoint**: `GET /api/notes/{id}/graph`
+
+**Query Parameters**:
+- `depth` (integer, optional, default: 1, max: 3) - Number of link levels to traverse outward
+
+**Description**: Starting from the given note, walks the link graph breadth-first up to `depth` levels. Returns all reachable notes with their full data (tags, links, uuid) plus a `distance` field indicating how many hops from the starting note.
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Related Note",
+      "content": "...",
+      "summary": "...",
+      "tags": ["ml"],
+      "links": [],
+      "synced": true,
+      "distance": 1,
+      "created_at": "2024-01-20T14:30:00Z",
+      "updated_at": "2024-01-20T14:30:00Z"
     }
   ],
   "total": 1
