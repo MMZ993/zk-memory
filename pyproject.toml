@@ -28,9 +28,10 @@ dev = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["src"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["app"]
+packages = ["src/app"]
 
 [build-system]
 requires = ["hatchling"]

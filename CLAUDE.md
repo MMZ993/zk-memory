@@ -14,17 +14,20 @@ A FastAPI REST API providing long-term memory for AI agents. Uses SQLite (struct
 ## Project Structure
 
 ```
-app/
-  api/        # FastAPI route handlers
-  models/     # SQLAlchemy models (database.py) + Pydantic schemas (schemas.py)
-  services/   # Business logic (one file per domain)
-  db/         # DB clients: session.py (SQLite), qdrant.py (Qdrant)
-  utils/      # markdown.py
-scripts/      # Bash scripts for human operations
-tests/        # test_api/, test_services/, test_utils/
-docs/         # All design docs
-main.py       # FastAPI entry point
+src/
+  main.py       # FastAPI entry point
+  app/
+    api/        # FastAPI route handlers
+    models/     # SQLAlchemy models (database.py) + Pydantic schemas (schemas.py)
+    services/   # Business logic (one file per domain)
+    db/         # DB clients: session.py (SQLite), qdrant.py (Qdrant)
+    utils/      # markdown.py
+scripts/        # Bash scripts for human operations
+tests/          # test_api/, test_services/, test_utils/
+docs/           # All design docs + IMPLEMENTATION_GAPS.md
 ```
+
+Docker copies `src/` only — docs, tests, and config files never enter the image.
 
 ## Tech Stack
 
@@ -44,10 +47,10 @@ source .venv/bin/activate
 # Start Qdrant (required)
 docker run -p 6333:6333 -v $(pwd)/qdrant_storage:/qdrant/storage qdrant/qdrant
 
-# Run app
-uvicorn main:app --reload
+# Run app (src/ must be on PYTHONPATH)
+PYTHONPATH=src uvicorn main:app --reload
 
-# Run tests
+# Run tests (pythonpath = ["src"] is set in pyproject.toml)
 pytest tests/ -v
 ```
 
@@ -69,7 +72,7 @@ pytest tests/ -v
 - Follow `docs/implementation-guide.md` phases in order
 - API endpoints MUST match `docs/api-specification.md` exactly
 - DB schema MUST match `docs/database-schema.md` (including the `synced` column on notes)
-- Use `app/db/session.py` for SQLite sessions, `app/db/qdrant.py` for Qdrant client
+- Use `src/app/db/session.py` for SQLite sessions, `src/app/db/qdrant.py` for Qdrant client
 - All embedding calls must be async
 - Mock embeddings in tests (never call real APIs in tests)
 - Update `PROGRESS.md` when phases complete

@@ -70,6 +70,12 @@
 See `docs/documentation-summary.md` for the full list of 13 finalized design decisions.
 The implementation guide at `docs/implementation-guide.md` has the step-by-step code.
 
+### Explicitly Dropped Features
+
+- **Atomic note splitting**: considered in early planning, dropped — splitting large content into sub-notes is the calling agent's responsibility, not the API's
+- **Markdown file watcher / bidirectional sync**: dropped — DB is the source of truth; export is read-only JSON; no Obsidian-style `[[links]]` format
+- **Backup API endpoints**: dropped — backup is external (file copy); see `docs/backup-strategy.md`
+
 ## Next Action
 
 Start Phase 3: Create Pydantic schemas (`app/models/schemas.py`) and remaining services.

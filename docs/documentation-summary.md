@@ -19,14 +19,11 @@ All documentation has been consolidated into clean, implementation-focused guide
 | **docs/testing-plan.md** | Comprehensive testing strategy | ✅ Complete |
 | **docs/backup-strategy.md** | Backup and disaster recovery plan | ✅ Complete |
 
-### Project Files
-
-| File | Purpose | Status |
-|------|---------|--------|
-| **implementation-plan.md** | Initial plan | ✅ Kept for reference |
-
 ### Removed Files (Obsolete)
 
+- ~~implementation-plan.md~~ (Early draft — all relevant decisions moved to PROGRESS.md and docs/)
+- ~~PLANNING_COMPLETE.md~~ (Agent-generated status marker — redundant with PROGRESS.md)
+- ~~PREREQUISITES_COMPLETE.md~~ (Agent-generated status marker — redundant with PROGRESS.md)
 - ~~docs/qdrant-rationale.md~~ (Decision made, no longer needed)
 - ~~docs/implementation-decisions.md~~ (Replaced by refined docs)
 - ~~docs/refined-architecture.md~~ (Consolidated into implementation guide)
@@ -48,7 +45,6 @@ agents_memory/
 │   ├── implementation-guide.md        # Step-by-step guide
 │   ├── testing-plan.md                # Testing strategy and examples
 │   └── backup-strategy.md             # Backup and disaster recovery
-└── implementation-plan.md             # Initial plan (reference)
 ```
 
 ## How to Use This Documentation
