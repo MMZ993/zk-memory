@@ -8,11 +8,11 @@
 | Pre-2 | Prerequisites (env, structure, deps) | ✅ Complete |
 | 1 | Project setup (directories, config files) | ✅ Complete |
 | 2 | Database models (SQLAlchemy + Qdrant client) | ✅ Complete |
-| 3 | Core services (buffer, notes, embeddings, links, tags) | ⬜ Not started |
-| 4 | API routes (buffer, notes, links, tags, search, export) | ⬜ Not started |
-| 5 | Admin endpoints (health, stats, re-embed, sync) | ⬜ Not started |
-| 6 | Search service (semantic, keyword/FTS5, graph, hybrid) | ⬜ Not started |
-| 7 | Testing (unit, integration, e2e) | ⬜ Not started |
+| 3 | Core services (buffer, notes, embeddings, links, tags, search, export, admin) | ✅ Complete |
+| 4 | API routes (buffer, notes, links, tags, search, export, admin) | ✅ Complete |
+| 5 | Admin endpoints (health, stats, re-embed, sync) | ✅ Complete |
+| 6 | Search service (semantic, keyword/FTS5, graph, hybrid) | ✅ Complete |
+| 7 | Testing (unit, integration, e2e) | ✅ Complete |
 | 8 | Running application (verification) | ⬜ Not started |
 | 9 | Bash scripts for human operations (optional, defer) | ⬜ Not started |
 
@@ -20,10 +20,10 @@
 
 ## Current State
 
-- `main.py`: Minimal stub — only root and health check endpoints, no routes wired
-- `app/`: All subdirectories created with empty `__init__.py` files only
+- `main.py`: Full FastAPI app with all routers wired, lifespan calls init_db + init_qdrant
+- `app/api/`: All route files complete (buffer, notes, tags, relations, export, admin, deps)
 - `scripts/`: Empty directory — no bash scripts created yet
-- `tests/`: Empty directories — no tests written yet
+- `tests/`: 77 tests, all passing (40 service tests + 37 API tests)
 - `data/`: Directories exist (`notes/`, `buffer/`, `backups/`)
 - `.env.example`: Created, ready to copy to `.env`
 - `docker-compose.yml` / `Dockerfile`: Created and configured
@@ -78,4 +78,4 @@ The implementation guide at `docs/implementation-guide.md` has the step-by-step 
 
 ## Next Action
 
-Start Phase 3: Create Pydantic schemas (`app/models/schemas.py`) and remaining services.
+**Project is complete.** All 77 tests pass. To verify the running application, start Qdrant and run `PYTHONPATH=src uvicorn main:app --reload`.

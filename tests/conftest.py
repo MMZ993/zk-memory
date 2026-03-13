@@ -80,5 +80,6 @@ def mock_qdrant():
     mock_client.collection_exists.return_value = True
 
     with patch("app.db.qdrant.client", mock_client), \
-         patch("app.services.note_service.client", mock_client):
+         patch("app.services.note_service.client", mock_client), \
+         patch("app.services.embedding_service.client", mock_client):
         yield mock_client

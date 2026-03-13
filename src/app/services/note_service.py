@@ -2,13 +2,14 @@ from typing import Optional
 from datetime import datetime, timezone
 import uuid
 
-
-def _now() -> datetime:
-    return datetime.now(timezone.utc)
-
+from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
 from app.models.database import Note, Tag, NoteTag
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 from app.db.qdrant import client, QDRANT_COLLECTION
 from app.services.embedding_service import generate_embedding, upsert_embedding
 from app.core.config import get_settings
@@ -93,6 +94,28 @@ async def create_note(db: Session, note_data: dict, background_tasks=None) -> No
 
 def get_note(db: Session, note_id: str) -> Optional[Note]:
     return db.query(Note).filter(Note.id == note_id).first()
+
+
+def list_notes(
+    db: Session,
+    tags: list[str] | None = None,
+    sort: str = "updated_at",
+    order: str = "desc",
+    limit: int = 20,
+    offset: int = 0,
+) -> list[Note]:
+    query = db.query(Note)
+    if tags:
+        query = (
+            query
+            .join(NoteTag, Note.id == NoteTag.note_id)
+            .join(Tag, NoteTag.tag_id == Tag.id)
+            .filter(Tag.name.in_(tags))
+            .distinct()
+        )
+    sort_col = Note.updated_at if sort == "updated_at" else Note.created_at
+    order_fn = desc if order == "desc" else asc
+    return query.order_by(order_fn(sort_col)).offset(offset).limit(limit).all()
 
 
 async def update_note(db: Session, note_id: str, note_data: dict, background_tasks=None) -> Optional[Note]:

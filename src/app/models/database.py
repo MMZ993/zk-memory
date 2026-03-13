@@ -29,6 +29,10 @@ class Note(Base):
 
     note_tags = relationship("NoteTag", back_populates="note", cascade="all, delete-orphan")
 
+    @property
+    def tags(self) -> list[str]:
+        return [nt.tag.name for nt in self.note_tags]
+
 
 class RelationType(Base):
     __tablename__ = "relation_types"
