@@ -56,16 +56,17 @@ async def search_hybrid(
     limit: int = 10,
     tags: list[str] | None = None,
 ) -> list[tuple[Note, float]]:
-    """Merge semantic and keyword results (deduplicated, semantic first)."""
+    """Merge semantic and keyword results (deduplicated, highest score wins)."""
     semantic = await search_semantic(db, query, limit=limit, tags=tags)
     keyword = search_keyword(db, query, limit=limit)
-    seen: set[str] = set()
-    combined: list[tuple[Note, float]] = []
+    scores: dict[str, float] = {}
+    notes_map: dict[str, Note] = {}
     for note, score in semantic + keyword:
-        if note.id not in seen:
-            seen.add(note.id)
-            combined.append((note, score))
-    return combined[:limit]
+        if note.id not in scores or score > scores[note.id]:
+            scores[note.id] = score
+            notes_map[note.id] = note
+    combined = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    return [(notes_map[nid], s) for nid, s in combined[:limit]]
 
 
 def search_graph(

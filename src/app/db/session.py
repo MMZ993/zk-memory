@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import sessionmaker, Session
 from app.models.database import Base
 from app.core.config import get_settings
@@ -26,6 +26,33 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts "
+            "USING fts5(note_id UNINDEXED, title, content)"
+        ))
+        conn.execute(text(
+            "CREATE TRIGGER IF NOT EXISTS notes_fts_ai "
+            "AFTER INSERT ON notes BEGIN "
+            "  INSERT INTO notes_fts(note_id, title, content) "
+            "  VALUES (new.id, new.title, new.content); "
+            "END"
+        ))
+        conn.execute(text(
+            "CREATE TRIGGER IF NOT EXISTS notes_fts_au "
+            "AFTER UPDATE ON notes BEGIN "
+            "  DELETE FROM notes_fts WHERE note_id = old.id; "
+            "  INSERT INTO notes_fts(note_id, title, content) "
+            "  VALUES (new.id, new.title, new.content); "
+            "END"
+        ))
+        conn.execute(text(
+            "CREATE TRIGGER IF NOT EXISTS notes_fts_ad "
+            "AFTER DELETE ON notes BEGIN "
+            "  DELETE FROM notes_fts WHERE note_id = old.id; "
+            "END"
+        ))
+        conn.commit()
 
 
 def get_db() -> Session:
