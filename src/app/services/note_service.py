@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
-from app.models.database import Note, Tag, NoteTag
+from app.models.database import Note, Tag, NoteTag, Link
 
 
 def _now() -> datetime:
@@ -153,6 +153,9 @@ def delete_note(db: Session, note_id: str) -> bool:
     if not note:
         return False
 
+    db.query(Link).filter(
+        (Link.source_id == note_id) | (Link.target_id == note_id)
+    ).delete(synchronize_session=False)
     db.query(NoteTag).filter(NoteTag.note_id == note_id).delete()
     db.delete(note)
     db.commit()

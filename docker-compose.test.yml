@@ -2,8 +2,9 @@ version: '3.8'
 
 # Integration test stack — isolated from the production compose file.
 #
-# API runs on port 8001, Qdrant on port 6334.
-# Ollama is expected to be running on the host (port 11434).
+# API uses host network mode so it can reach Ollama on localhost:11434.
+# Qdrant-test runs in its own network, mapped to host port 6334.
+# API listens on host port 8001 (uvicorn started with --port 8001).
 #
 # Usage:
 #   docker compose -f docker-compose.test.yml up -d --build
@@ -13,25 +14,21 @@ version: '3.8'
 services:
   agents-memory-test:
     build: .
-    ports:
-      - "8001:8000"
+    network_mode: host
+    command: uvicorn main:app --host 0.0.0.0 --port 8001
     environment:
       - DATABASE_URL=sqlite:///./data/test.db
-      - QDRANT_HOST=qdrant-test
-      - QDRANT_PORT=6333
+      - QDRANT_HOST=localhost
+      - QDRANT_PORT=6334
       - QDRANT_COLLECTION=test_memory
       - EMBEDDING_PROVIDER=ollama
       - EMBEDDING_MODEL=nomic-embed-text
       - EMBEDDING_DIMENSION=768
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      - OLLAMA_HOST=http://localhost:11434
       - BUFFER_RETENTION_DAYS=7
       - LOG_LEVEL=INFO
     volumes:
       - test_data:/app/data
-    depends_on:
-      - qdrant-test
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     restart: "no"
 
   qdrant-test:

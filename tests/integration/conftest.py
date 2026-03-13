@@ -48,28 +48,33 @@ def _wait_for_api(url: str, timeout: int = 60) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            r = httpx.get(f"{url}/health", timeout=5)
+            r = httpx.get(f"{url}/api/health", timeout=5)
             if r.status_code == 200:
                 return
         except httpx.ConnectError:
             pass
         time.sleep(2)
-    pytest.skip(f"API at {url} did not become ready within {timeout}s — is the test stack running?")
+    pytest.skip(f"API at {url}/api/health did not respond within {timeout}s — is the test stack running?")
 
 
 def _wipe_data(client: httpx.Client) -> None:
     """Delete all notes and buffer notes before seeding a fresh dataset.
 
+    Paginates with limit=100 (API maximum) until empty.
     Deleting notes via the API removes them from both SQLite and Qdrant
     (note_service.delete_note handles both stores).
     """
-    resp = client.get("/api/notes/", params={"limit": 500})
-    if resp.status_code == 200:
+    while True:
+        resp = client.get("/api/notes/", params={"limit": 100})
+        if resp.status_code != 200 or not resp.json():
+            break
         for note in resp.json():
             client.delete(f"/api/notes/{note['id']}")
 
-    resp = client.get("/api/buffer/", params={"limit": 500})
-    if resp.status_code == 200:
+    while True:
+        resp = client.get("/api/buffer/", params={"limit": 100})
+        if resp.status_code != 200 or not resp.json():
+            break
         for note in resp.json():
             client.delete(f"/api/buffer/{note['id']}")
 
