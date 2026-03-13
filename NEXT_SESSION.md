@@ -2,123 +2,129 @@
 
 ## Previous Session Summary
 
-Full project review + two production bug fixes + CLI planning:
+Go CLI implementation — skeleton + notes CRUD + buffer commands:
 
-### Bug fixes (committed: `6144230`)
+### Commits this session
 
-- **`src/app/db/session.py`** — `init_db()` now creates the `notes_fts` FTS5 virtual table
-  and 3 triggers (insert/update/delete). Previously FTS5 only existed in integration test
-  setup, so keyword search silently returned `[]` in production.
-- **`src/app/services/search_service.py`** — `search_hybrid()` now keeps the highest score
-  per note across semantic + keyword results. Previously it kept the first (semantic) score,
-  which caused keyword matches (score=1.0) to be dropped by the threshold filter when the
-  same note also appeared in semantic results with a low score.
+- **`3216b9f`** — CLI skeleton: `go.mod` (cobra), `main.go`, `cmd/root.go`, `internal/client/client.go`, `internal/client/notes.go`, `cmd/notes.go` (all 6 notes subcommands + flags), stub cmd files for buffer/tags/relations/export/admin, `Makefile`
+- **`d75d6a9`** — Buffer commands: `internal/client/buffer.go`, `cmd/buffer.go` (add, list, get, delete, process, cleanup)
 
-### CLI planning
+### Go setup
 
-- Designed Go CLI tool — see **`docs/cli-plan.md`** for full spec
-- Language: Go (single static binary, deployed on agent VM separate from API VM)
-- Config: ENV vars only (`MEMORY_API_URL`, `MEMORY_API_KEY`, `MEMORY_TIMEOUT`)
-- Output: JSON default + `--pretty` flag for humans
-- Commands: 1:1 mapping with all API endpoints
-- Location: `cli/` folder in this repo
-- `internal/client` package shared with future MCP server
+- Go 1.26.1 installed via mise (`mise exec go -- go build`)
+- cobra 1.10.2 (stdlib HTTP only, no extra HTTP deps)
+- Binary builds to `cli/dist/memory` (gitignored)
+
+### CLI state after this session
+
+Fully implemented:
+- `memory notes` — search, create, list, get, update, delete
+- `memory buffer` — add, list (--processed/--unprocessed), get, delete, process, cleanup
+
+Stubs only (no subcommands yet):
+- `memory tags`
+- `memory relations`
+- `memory export`
+- `memory admin`
 
 ---
 
 ## Remaining Tasks
 
-### Bash scripts (likely dropped)
-`scripts/export_notes.sh` and `scripts/sync_back.sh` were deferred in Phase 9.
-With the CLI implemented, these become one-liners (`memory export notes`). Probably not needed.
+### CLI (primary)
 
-### GitLab CI pipeline (future, homelab not active yet)
-- **Every push**: unit tests only
-- **Merge to main / release tag**: spin up test LXC, run integration tests, gate prod deploy
-- All env-var driven
+In order per `docs/cli-plan.md` step 5:
+
+1. **`tags` global** — `list`, `create`
+   - API: `GET /api/tags`, `POST /api/tags`
+2. **`notes tags`** — `list`, `add`, `remove` (subcommand of notes)
+   - API: `GET /api/notes/{id}/tags`, `POST /api/notes/{id}/tags`, `DELETE /api/notes/{id}/tags/{tag}`
+3. **`notes links`** — `links`, `link`, `unlink`, `graph` (subcommands of notes)
+   - API: `GET /api/notes/{id}/links`, `POST /api/notes/links`, `DELETE /api/notes/links/{link_id}`, `GET /api/notes/{id}/graph`
+4. **`relations`** — `list`, `create`, `get`, `update`, `delete`
+   - API: `GET/POST /api/relations`, `GET/PATCH/DELETE /api/relations/{id}`
+5. **`export`** — `all`, `notes`, `buffer`
+   - API: `GET /api/export/all`, `GET /api/export/notes`, `GET /api/export/buffer`
+6. **`admin`** — `stats`, `config`, `sync`, `reembed`
+   - API: `GET /api/admin/stats`, `GET /api/admin/config`, `POST /api/admin/sync-embeddings`, `POST /api/admin/reembed`
+7. **Cross-compile + Makefile** — already done; add `make build-all` test
+8. **`cli/README.md`** — usage guide per `docs/cli-plan.md`
+
+### Future (not this repo)
+
+- GitLab CI pipeline — homelab not active yet
+- MCP server — after CLI complete, reuses `internal/client`
 
 ---
 
 ## Next Steps (prioritized)
 
-1. **(Start now)** Implement the Go CLI — see `docs/cli-plan.md` for full spec
-   - Suggested order:
-     1. `cli/` skeleton: `go.mod`, `main.go`, cobra root, `internal/client/client.go`
-     2. `notes search` + `notes create` (validates full stack end-to-end)
-     3. Rest of `notes` CRUD
-     4. `buffer` commands
-     5. `tags`, `relations`, `export`, `admin`
-     6. `--pretty` output for all commands
-     7. Makefile with cross-compile targets
-2. **(Optional)** Update `docs/testing-plan.md` — currently has aspirational example code, not harmful but out of date
-3. **(Future)** GitLab CI pipeline when homelab is back up
-4. **(Future)** MCP server — `internal/client` package reused, thin MCP wrapper
+1. **(Start now)** `tags global` + `notes tags` — `internal/client/tags.go` + expand `cmd/tags.go` + add tags subcommands to `cmd/notes.go`
+2. `notes links` + `notes graph` — add link/graph subcommands to `cmd/notes.go`, `internal/client/notes.go` already has `Link` type
+3. `relations` — `internal/client/relations.go` + `cmd/relations.go`
+4. `export` — `internal/client/export.go` + `cmd/export.go`
+5. `admin` — `internal/client/admin.go` + `cmd/admin.go`
+6. `cli/README.md`
 
 ---
 
 ## Important Notes
 
+### Building the CLI
+
+```bash
+cd cli/
+mise exec go -- go build -o dist/memory .
+# or if go is on PATH:
+make build
+```
+
+### Running against local API
+
+```bash
+MEMORY_API_URL=http://localhost:8001 ./dist/memory notes list --pretty
+```
+
 ### API status
-- All 125 tests passing (77 unit + 48 integration)
+
+- All 125 tests still passing (77 unit + 48 integration)
 - Run unit: `source .venv/bin/activate && pytest tests/test_services/ tests/test_api/ -v`
 - Run integration: `docker compose up qdrant -d && INTEGRATION_TESTS=1 pytest tests/integration/ -v`
 
+### API endpoints still to implement in client
+
+See `docs/api-specification.md` for exact request/response shapes. Key ones:
+
+- `GET /api/tags` — returns `[{"id": ..., "name": ..., "note_count": ...}]`
+- `POST /api/tags` — body `{"name": "tag-name"}`
+- `GET /api/notes/{id}/tags` — returns array of tag objects
+- `POST /api/notes/{id}/tags` — body `{"name": "tag-name"}`
+- `DELETE /api/notes/{id}/tags/{tag_name}`
+- `GET /api/notes/{id}/links?direction=all&limit=50`
+- `POST /api/notes/links` — body `{"source_id": ..., "target_id": ..., "relation_type_id": ...}`
+- `DELETE /api/notes/links/{link_id}`
+- `GET /api/notes/{id}/graph?depth=1`
+- Relations, export, admin — see spec
+
 ### Critical design constraints (do not break)
+
 - **Two-phase sync**: notes written with `synced=False` → embedded → `synced=True`. Retry via `POST /api/admin/sync-embeddings`.
 - **Route ordering**: `/api/notes/search` and `/api/notes/links` MUST stay before `/{note_id}`. `/api/buffer/cleanup` MUST stay before `/api/buffer/{note_id}`.
-- **`Note.tags` property** on ORM model — do not remove. Makes `NoteResponse.model_validate(note)` work.
-- **`StaticPool`** in `tests/test_api/conftest.py` — required for SQLite in-memory with TestClient threads.
-- **Export is JSON arrays**, not ZIP/markdown.
-- **`client.query_points()` not `client.search()`** — qdrant-client removed `.search()`. The mock in `tests/conftest.py` uses `mock_client.query_points.return_value.points = []`.
+- **`client.query_points()` not `client.search()`** — qdrant-client removed `.search()`.
 - **Search param is `search_type`** (not `mode`) — `?search_type=keyword|semantic|hybrid`
-
-### Integration test isolation
-- SQLite: `data/integration.db` (separate from `data/memory.db`)
-- Qdrant: `test_memory` collection (separate from `notes_embeddings`)
-- QDRANT_COLLECTION patched at module level in: `app.db.qdrant`, `app.services.embedding_service`, `app.services.note_service`
-- FTS5 table + triggers created in BOTH `init_db()` (production) and `seeded_client` fixture (integration test isolation)
-- Session-scoped seeded data — 14 notes + 13 links created once, shared across all integration tests
-
-### Full test layout
-```
-tests/
-├── __init__.py
-├── conftest.py                              # autouse mocks: embeddings + Qdrant (query_points)
-├── test_services/
-│   ├── test_schemas.py                      # 16 tests
-│   ├── test_buffer_service.py               # 7 tests
-│   ├── test_note_service.py                 # 6 tests
-│   ├── test_tag_service.py                  # 4 tests
-│   ├── test_link_and_relation_service.py    # 4 tests
-│   └── test_search_service.py              # 3 tests
-├── test_api/
-│   ├── conftest.py                          # StaticPool engine, reset_db, client
-│   ├── test_buffer.py                       # 8 tests
-│   ├── test_notes.py                        # 11 tests
-│   ├── test_tags.py                         # 4 tests
-│   ├── test_relations.py                    # 6 tests
-│   ├── test_export.py                       # 5 tests
-│   └── test_admin.py                        # 3 tests
-└── integration/
-    ├── conftest.py                          # real Qdrant + Ollama, session-scoped seed
-    ├── fixtures.py                          # 14 smart-home notes, 13 links, 5 buffer samples
-    ├── test_seed.py                         # 7 tests
-    ├── test_search_semantic.py              # 9 tests
-    ├── test_search_keyword.py               # 7 tests
-    ├── test_search_hybrid.py                # 5 tests
-    ├── test_search_graph.py                 # 11 tests
-    └── test_buffer.py                       # 9 tests
-```
-Total: **77 unit tests** + **48 integration tests** = 125 tests
-
-### CLI reference
-See `docs/cli-plan.md` for full command structure, project layout, and implementation order.
 
 ---
 
 ## Previous NEXT_SESSION.md Review
 
-Previous items:
-- **Phase 9 bash scripts** — likely dropped; CLI replaces them entirely
-- **`docs/testing-plan.md` update** — still optional, not urgent
-- **GitLab CI** — still future, homelab not active
+Previous top priority: "Implement the Go CLI"
+- ✅ Skeleton done (go.mod, cobra root, internal/client base, Makefile)
+- ✅ `notes search` + `notes create` — first two commands validating full stack
+- ✅ Rest of `notes` CRUD (list, get, update, delete)
+- ✅ `buffer` commands (add, list, get, delete, process, cleanup)
+- ⏳ `tags`, `relations`, `export`, `admin` — next session
+
+Other previous items:
+- Bash scripts (`export_notes.sh`, `sync_back.sh`) — confirmed dropped; CLI replaces them
+- `docs/testing-plan.md` update — still optional, not urgent
+- GitLab CI — still future
