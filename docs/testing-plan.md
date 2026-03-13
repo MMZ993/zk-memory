@@ -24,17 +24,29 @@ Test individual functions and classes in isolation.
 
 ### 2. Integration Tests
 
-Test interactions between components.
+Test the full stack against a real running API (not in-process).
 
 **Scope**:
-- API endpoints with real database
-- Database operations with SQLite
-- Vector operations with Qdrant
-- Cross-database sync logic
+- All API endpoints over real HTTP
+- Real SQLite database, real Qdrant, real Ollama embeddings
+- Semantic search quality (paraphrased queries)
+- Keyword / FTS5 / graph / hybrid search correctness
+- Buffer note lifecycle
 
-**Tools**: pytest, TestClient (FastAPI), test database fixtures
+**Tools**: pytest, httpx, docker-compose.test.yml
 
-**Coverage Goal**: All API endpoints
+**Stack**: `agents-memory-test` (port 8001) + `qdrant-test` (port 6334) + host Ollama
+
+**Run**:
+```bash
+make test-integration
+# or manually:
+docker compose -f docker-compose.test.yml up -d --build
+INTEGRATION_TESTS=1 pytest tests/integration/ -v
+docker compose -f docker-compose.test.yml down -v
+```
+
+**Coverage Goal**: All API endpoints, all search modes
 
 ### 3. End-to-End Tests
 

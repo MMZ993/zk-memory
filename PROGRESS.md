@@ -23,7 +23,7 @@
 - `main.py`: Full FastAPI app with all routers wired, lifespan calls init_db + init_qdrant
 - `app/api/`: All route files complete (buffer, notes, tags, relations, export, admin, deps)
 - `scripts/`: Empty directory — no bash scripts created yet
-- `tests/`: 77 tests, all passing (40 service tests + 37 API tests)
+- `tests/`: 125 tests total — 77 unit (40 service + 37 API) + 48 integration (real Docker stack, INTEGRATION_TESTS=1)
 - `data/`: Directories exist (`notes/`, `buffer/`, `backups/`)
 - `.env.example`: Created, ready to copy to `.env`
 - `docker-compose.yml` / `Dockerfile`: Created and configured
