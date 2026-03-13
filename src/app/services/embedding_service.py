@@ -54,12 +54,13 @@ async def search_embeddings(
         search_filter = Filter(
             must=[FieldCondition(key="tags", match=MatchAny(any=tag_filter))]
         )
-    return client.search(
+    response = client.query_points(
         collection_name=QDRANT_COLLECTION,
-        query_vector=query_vector,
+        query=query_vector,
         query_filter=search_filter,
         limit=limit,
     )
+    return response.points
 
 
 # ── Providers ──────────────────────────────────────────────────────────────────

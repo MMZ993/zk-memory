@@ -74,7 +74,9 @@ def mock_qdrant():
     Auto-used: patches the Qdrant client so no real Qdrant connection is needed.
     """
     mock_client = MagicMock()
-    mock_client.search.return_value = []
+    mock_response = MagicMock()
+    mock_response.points = []
+    mock_client.query_points.return_value = mock_response
     mock_client.upsert.return_value = None
     mock_client.delete.return_value = None
     mock_client.collection_exists.return_value = True
