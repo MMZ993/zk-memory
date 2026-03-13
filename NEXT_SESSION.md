@@ -42,36 +42,6 @@ Replaced FastAPI TestClient + in-process mocks with a real running Docker stack.
 
 ## Remaining Tasks
 
-### Test the integration test refactor (first thing next session)
-
-The Docker refactor has NOT been tested yet — it was written and committed but not run.
-
-```bash
-# Build and start the test stack
-docker compose -f docker-compose.test.yml up -d --build
-
-# Check the API is up
-curl http://localhost:8001/health
-
-# Run tests
-INTEGRATION_TESTS=1 pytest tests/integration/ -v
-
-# Tear down
-docker compose -f docker-compose.test.yml down -v
-```
-
-Watch for:
-- `_wait_for_api()` timeout — if 60s isn't enough, increase it
-- Qdrant collection creation — API creates `test_memory` on startup via lifespan
-- Ollama connectivity — `host.docker.internal` must resolve inside the container
-
-### Merge feature branch after tests pass
-
-```bash
-git checkout main
-git merge feature/integration-test-docker
-```
-
 ### `memory dump` against live API (low priority)
 
 Test `memory dump --output /tmp/vault --format obsidian` against a running API and open the output in Obsidian vault.
@@ -84,10 +54,8 @@ Test `memory dump --output /tmp/vault --format obsidian` against a running API a
 
 ## Next Steps (prioritized)
 
-1. **Verify integration test refactor works** — run the Docker stack and confirm all 48 tests pass
-2. **Merge `feature/integration-test-docker` → main**
-3. **Alembic setup** — migration framework for the SQLite schema (future-proof for PostgreSQL)
-4. GitLab CI / MCP server — future sessions
+1. **Alembic setup** — migration framework for the SQLite schema (future-proof for PostgreSQL)
+2. GitLab CI / MCP server — future sessions
 
 ---
 
@@ -152,7 +120,8 @@ MEMORY_API_URL=http://localhost:8001 ./dist/memory admin health --pretty
 Previous state: CLI complete, `memory dump` designed + implemented
 
 - ✅ CLI work committed (was uncommitted from prior session)
-- ✅ Integration test refactor — Docker-based (written + committed, not yet tested)
+- ✅ Integration test refactor — Docker-based, 48/48 passing, merged to main
+- ✅ Three bugs fixed during verification: /api/health path, limit=100 max, delete_note FK
 - ⬜ Test `memory dump` against live API — deferred (low priority)
 - ⬜ Fix `LinkResponse` embed — deferred (low priority)
 - ⬜ GitLab CI / MCP server — still future
