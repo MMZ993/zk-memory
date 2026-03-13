@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/mmz/agents-memory-cli/internal/client"
+	"agents-memory-cli/internal/client"
 	"github.com/spf13/cobra"
 )
 

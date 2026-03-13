@@ -266,7 +266,7 @@ curl -X POST http://localhost:8000/api/notes \
 - `direction` (string, optional, default: all) - incoming, outgoing, or all
 - `limit` (integer, optional, default: 50)
 
-**Response**: Array of Link objects with relation type details
+**Response**: Array of Link objects (`relation_type_id` only — resolve names via `GET /api/relations`)
 
 ### Links
 
@@ -594,16 +594,15 @@ System management and monitoring.
   "source_id": "uuid",
   "target_id": "uuid",
   "relation_type_id": "uuid",
-  "relation_type": {
-    "id": "uuid",
-    "name": "string",
-    "description": "string",
-    "is_bidirectional": "boolean"
-  },
   "description": "string (optional)",
   "created_at": "ISO 8601 datetime"
 }
 ```
+
+> `relation_type_id` is a foreign key into RelationType. To resolve names, fetch
+> `GET /api/relations` once and build an `id → name` map client-side. Embedding the
+> full object in every link response would be redundant at scale (100k+ links, ~10–20
+> relation types).
 
 ### Tag
 ```json

@@ -1,4 +1,4 @@
-module github.com/mmz/agents-memory-cli
+module agents-memory-cli
 
 go 1.26
 

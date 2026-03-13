@@ -31,6 +31,7 @@ func init() {
 	rootCmd.AddCommand(relationsCmd)
 	rootCmd.AddCommand(exportCmd)
 	rootCmd.AddCommand(adminCmd)
+	rootCmd.AddCommand(dumpCmd)
 }
 
 // printJSON writes v as compact JSON to stdout, or pretty if --pretty is set.
@@ -46,6 +47,23 @@ func printJSON(v any) {
 		fatal("encode output: %v", err)
 	}
 	fmt.Println(string(b))
+}
+
+// printRawJSON writes a json.RawMessage to stdout, pretty-printing if --pretty is set.
+func printRawJSON(raw []byte) {
+	if pretty {
+		var v any
+		if err := json.Unmarshal(raw, &v); err != nil {
+			fatal("decode output: %v", err)
+		}
+		b, err := json.MarshalIndent(v, "", "  ")
+		if err != nil {
+			fatal("encode output: %v", err)
+		}
+		fmt.Println(string(b))
+		return
+	}
+	fmt.Println(string(raw))
 }
 
 // fatal writes msg to stderr and exits 1.
