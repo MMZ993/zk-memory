@@ -78,7 +78,29 @@ The implementation guide at `docs/implementation-guide.md` has the step-by-step 
 
 ## Next Action
 
-**Project is complete.** All 77 tests pass. To verify the running application, start Qdrant and run `PYTHONPATH=src uvicorn main:app --reload`.
+**PostgreSQL Phase 1 complete.** Branch `feat/postgres-migration`. Next: Phase 2 — pgvector as Qdrant alternative (separate branch).
+
+## PostgreSQL Phase 1 (completed 2026-03-14)
+
+Dialect-aware SQLite + PostgreSQL support. `DB_BACKEND=sqlite|postgres` env var selects path.
+
+- `config.py` — `db_backend` field
+- `session.py` — SQLite-only `check_same_thread` and WAL/FK pragmas
+- `alembic/env.py` — pragma listener guarded behind SQLite check
+- `alembic/versions/d584390723bb` — `op.get_bind().dialect.name` branch: SQLite → FTS5 virtual table + triggers; PostgreSQL → `search_vector tsvector` column + GIN index + trigger function
+- `search_service.py` — `search_keyword()` branches on `db_backend`: SQLite uses FTS5 MATCH, PostgreSQL uses `plainto_tsquery('english', ...)` + `ts_rank`
+- `requirements.txt` + `pyproject.toml` — `psycopg[binary]>=3.1.0` (psycopg3; requires `postgresql+psycopg://` URL scheme)
+- `docker-compose.postgres.yml` — production compose: PostgreSQL 16 + Qdrant, healthcheck before app starts
+- `docker-compose.test.postgres.yml` — isolated test stack (API: 8002, PG: 5433, Qdrant: 6335)
+- `Makefile` — `test-integration-postgres` / `test-integration-postgres-down` targets
+- `scripts/dev-reset-postgres.sh` — wipe + recreate schema for dev/test postgres stacks
+- **48/48 integration tests pass against real PostgreSQL**
+
+## Scoped API Keys (completed 2026-03-14)
+
+5 independent `MEMORY_API_KEY_READ/BUFFER/WRITE/DUMP/ADMIN` env vars replace single `API_KEY`.
+Flat scopes, admin bypasses all checks, auth disabled when all vars unset.
+401 = missing key, 403 = wrong scope. See `docs/api-scopes.md`.
 
 ## Alembic Setup (completed 2026-03-13)
 
