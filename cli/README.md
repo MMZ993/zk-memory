@@ -33,6 +33,36 @@ export MEMORY_API_URL=http://192.168.1.10:8080
 export MEMORY_API_KEY=secret123
 ```
 
+### Scoped access via bash functions
+
+The API enforces per-scope keys (see `docs/api-scopes.md`). The CLI sends a single key per invocation, so when multiple agents share the same machine each with a different role, define bash functions in `.bashrc` to pin the right key per role:
+
+```bash
+memory_read()   { MEMORY_API_KEY=key_ro_xxx   memory "$@"; }
+memory_buffer() { MEMORY_API_KEY=key_buf_xxx  memory "$@"; }
+memory_write()  { MEMORY_API_KEY=key_rw_xxx   memory "$@"; }
+memory_admin()  { MEMORY_API_KEY=key_adm_xxx  memory "$@"; }
+```
+
+Usage is identical to the binary:
+
+```bash
+memory_read   notes search "something" --pretty
+memory_buffer buffer add --content "..."
+memory_write  notes create --title "..."
+memory_admin  admin stats --pretty
+```
+
+An agent needing two scopes (e.g. the overnight write agent that reads then writes) simply calls the appropriate function per operation:
+
+```bash
+memory_read  notes list                   # read phase
+memory_write notes create --title "..."   # write phase
+memory_write buffer process <id>
+```
+
+Using a key outside its configured scope returns `403: API key does not have the required scope for this operation`.
+
 ## Output
 
 - **Default**: compact JSON (agent/pipe-friendly)

@@ -54,9 +54,22 @@ def _build_qdrant_payload(note: Note, tags: list[str]) -> dict:
     }
 
 
+def _build_embedding_text(note: Note, tags: list[str]) -> str:
+    """Build the text to embed: title + content + tags (if any).
+
+    Tags are appended as comma-separated keywords so the embedding captures
+    thematic context that may not appear verbatim in the content.
+    Links are structural metadata and are intentionally excluded.
+    """
+    parts = [note.title, note.content]
+    if tags:
+        parts.append("Tags: " + ", ".join(tags))
+    return "\n\n".join(parts)
+
+
 async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
     """Generate embedding and mark note as synced."""
-    embedding = await generate_embedding(note.title + " " + note.content)
+    embedding = await generate_embedding(_build_embedding_text(note, tags), task="document")
     await upsert_embedding(
         note_id=note.id,
         vector=embedding,
@@ -174,7 +187,7 @@ async def sync_unsynced_notes(db: Session, limit: int = 100) -> int:
     for note in unsynced:
         try:
             tags = _get_tag_names(db, note.id)
-            embedding = await generate_embedding(note.title + " " + note.content)
+            embedding = await generate_embedding(_build_embedding_text(note, tags), task="document")
             await upsert_embedding(
                 note_id=note.id,
                 vector=embedding,

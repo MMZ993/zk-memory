@@ -79,3 +79,16 @@ The implementation guide at `docs/implementation-guide.md` has the step-by-step 
 ## Next Action
 
 **Project is complete.** All 77 tests pass. To verify the running application, start Qdrant and run `PYTHONPATH=src uvicorn main:app --reload`.
+
+## Alembic Setup (completed 2026-03-13)
+
+`alembic/` directory + `alembic.ini` added at project root.
+
+- `alembic/env.py` — wired to `Base.metadata`, pulls `DATABASE_URL` from settings, applies SQLite WAL/FK pragmas
+- `alembic/versions/d584390723bb_initial_schema.py` — initial migration: all 7 ORM tables + FTS5 virtual table + 3 triggers
+- `src/app/db/session.py` — `init_db()` now calls `alembic upgrade head` (idempotent; replaces `create_all`)
+- `Dockerfile` — copies `alembic/` and `alembic.ini` into the image
+- `tests/test_api/conftest.py` — mocks `init_db` during API tests so Alembic doesn't touch the real DB
+- Existing `data/memory.db` stamped with `alembic stamp head`
+
+To add a future migration: `alembic revision --autogenerate -m "description"`, then edit and run `alembic upgrade head`.

@@ -1,6 +1,11 @@
-from sqlalchemy import create_engine, event, text
+import os
+
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker, Session
-from app.models.database import Base
+
+from alembic.config import Config
+from alembic import command as alembic_command
+
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -24,35 +29,27 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
+def _find_alembic_ini() -> str:
+    """Locate alembic.ini relative to the working directory or this file."""
+    if os.path.exists("alembic.ini"):
+        return "alembic.ini"
+    # Walk up from src/app/db/ → project root (4 levels up)
+    here = os.path.dirname(os.path.abspath(__file__))
+    for _ in range(5):
+        candidate = os.path.join(here, "alembic.ini")
+        if os.path.exists(candidate):
+            return candidate
+        here = os.path.dirname(here)
+    raise FileNotFoundError(
+        "alembic.ini not found — run the app from the project root "
+        "or ensure alembic.ini is present in the working directory."
+    )
+
+
 def init_db():
-    Base.metadata.create_all(bind=engine)
-    with engine.connect() as conn:
-        conn.execute(text(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts "
-            "USING fts5(note_id UNINDEXED, title, content)"
-        ))
-        conn.execute(text(
-            "CREATE TRIGGER IF NOT EXISTS notes_fts_ai "
-            "AFTER INSERT ON notes BEGIN "
-            "  INSERT INTO notes_fts(note_id, title, content) "
-            "  VALUES (new.id, new.title, new.content); "
-            "END"
-        ))
-        conn.execute(text(
-            "CREATE TRIGGER IF NOT EXISTS notes_fts_au "
-            "AFTER UPDATE ON notes BEGIN "
-            "  DELETE FROM notes_fts WHERE note_id = old.id; "
-            "  INSERT INTO notes_fts(note_id, title, content) "
-            "  VALUES (new.id, new.title, new.content); "
-            "END"
-        ))
-        conn.execute(text(
-            "CREATE TRIGGER IF NOT EXISTS notes_fts_ad "
-            "AFTER DELETE ON notes BEGIN "
-            "  DELETE FROM notes_fts WHERE note_id = old.id; "
-            "END"
-        ))
-        conn.commit()
+    """Apply all pending Alembic migrations (idempotent — safe to call on every startup)."""
+    alembic_cfg = Config(_find_alembic_ini())
+    alembic_command.upgrade(alembic_cfg, "head")
 
 
 def get_db() -> Session:

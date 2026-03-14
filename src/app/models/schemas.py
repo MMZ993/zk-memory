@@ -3,6 +3,11 @@ from typing import Optional, List, Any
 from datetime import datetime
 
 from app.models.enums import SearchType
+from app.core.config import get_settings
+
+
+def _max_content_length() -> int:
+    return get_settings().note_max_content_length
 
 
 # ── Request schemas ────────────────────────────────────────────────────────────
@@ -18,12 +23,30 @@ class NoteCreate(BaseModel):
     summary: Optional[str] = None
     tags: List[str] = []
 
+    @field_validator("content")
+    @classmethod
+    def content_length(cls, v: str) -> str:
+        limit = _max_content_length()
+        if limit > 0 and len(v) > limit:
+            raise ValueError(f"content exceeds maximum length of {limit} characters (got {len(v)})")
+        return v
+
 
 class NoteUpdate(BaseModel):
     title: Optional[str] = None
     content: Optional[str] = None
     summary: Optional[str] = None
     tags: Optional[List[str]] = None
+
+    @field_validator("content")
+    @classmethod
+    def content_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        limit = _max_content_length()
+        if limit > 0 and len(v) > limit:
+            raise ValueError(f"content exceeds maximum length of {limit} characters (got {len(v)})")
+        return v
 
 
 class LinkCreate(BaseModel):

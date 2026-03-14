@@ -8,7 +8,15 @@ class Settings(BaseSettings):
     debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    api_key: str = ""
+
+    # API key scopes — each accepts one key or comma-separated list of keys.
+    # If all are empty, authentication is disabled (dev/local mode).
+    # See docs/api-scopes.md for the full endpoint → scope mapping.
+    memory_api_key_read: str = ""
+    memory_api_key_buffer: str = ""
+    memory_api_key_write: str = ""
+    memory_api_key_dump: str = ""
+    memory_api_key_admin: str = ""
 
     # Database
     database_url: str = "sqlite:///./data/memory.db"
@@ -28,8 +36,12 @@ class Settings(BaseSettings):
     embedding_model: str = "nomic-embed-text"
     embedding_dimension: int = 768
     embedding_mode: str = "sync"  # sync | async
+    embedding_task_prefix: bool = False  # prepend search_document:/search_query: (nomic, mxbai)
     ollama_host: str = "http://localhost:11434"
     openai_api_key: str = ""  # only needed if embedding_provider=openai
+
+    # Notes
+    note_max_content_length: int = 2048  # max chars per note content; 0 = unlimited
 
     # Buffer
     buffer_retention_days: int = 7

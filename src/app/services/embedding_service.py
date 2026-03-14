@@ -24,8 +24,24 @@ settings = get_settings()
 
 # ── Public interface ───────────────────────────────────────────────────────────
 
-async def generate_embedding(text: str) -> list[float]:
-    """Generate an embedding vector for the given text using the configured provider."""
+_TASK_PREFIXES = {
+    "document": "search_document: ",
+    "query":    "search_query: ",
+}
+
+
+async def generate_embedding(text: str, task: str = "document") -> list[float]:
+    """Generate an embedding vector for the given text using the configured provider.
+
+    task: "document" (indexing a note) | "query" (embedding a search query).
+    When settings.embedding_task_prefix is True, prepends the appropriate task
+    instruction prefix — improves retrieval quality with nomic-embed-text and
+    mxbai-embed-large, which are trained with asymmetric task prefixes.
+    """
+    if settings.embedding_task_prefix:
+        prefix = _TASK_PREFIXES.get(task, "")
+        text = prefix + text
+
     if settings.embedding_provider == "ollama":
         return await _ollama_embed(text)
     if settings.embedding_provider == "openai":

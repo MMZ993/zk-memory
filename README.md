@@ -148,11 +148,14 @@ Key environment variables:
 
 | Variable | Default | Description |
 |-----------|----------|-------------|
-| `DATABASE_URL` | sqlite:///./data/memory.db | SQLite database path |
-| `QDRANT_HOST` | localhost | Qdrant server |
-| `OPENAI_API_KEY` | (required) | OpenAI API key |
-| `BUFFER_RETENTION_DAYS` | 7 | Days to keep processed buffer notes (0 = never) |
-| `MARKDOWN_DIR` | ./data/notes | Markdown export directory |
+| `DATABASE_URL` | `sqlite:///./data/memory.db` | SQLite database path |
+| `QDRANT_HOST` | `localhost` | Qdrant server host |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` or `openai` |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Model name for the chosen provider |
+| `EMBEDDING_TASK_PREFIX` | `false` | Prepend `search_document:`/`search_query:` task prefixes. Improves retrieval quality with nomic-embed-text and mxbai-embed-large. **Set to `true` for fresh deployments.** Changing on an existing index requires a full re-embed via the admin API. |
+| `NOTE_MAX_CONTENT_LENGTH` | `2048` | Max note content size in characters. `0` = unlimited. Notes over the limit are rejected with HTTP 422. |
+| `OPENAI_API_KEY` | — | Required only if `EMBEDDING_PROVIDER=openai` |
+| `BUFFER_RETENTION_DAYS` | `7` | Days to keep processed buffer notes (`0` = keep forever) |
 
 See [Configuration](docs/configuration.md) for complete reference.
 

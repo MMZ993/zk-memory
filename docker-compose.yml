@@ -13,10 +13,17 @@ services:
       - EMBEDDING_PROVIDER=openai
       - EMBEDDING_MODEL=text-embedding-ada-002
       - EMBEDDING_DIMENSION=1536
+      - EMBEDDING_TASK_PREFIX=true
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NOTE_MAX_CONTENT_LENGTH=2048
       - BUFFER_RETENTION_DAYS=7
       - MARKDOWN_DIR=./data/notes
       - LOG_LEVEL=INFO
+      - MEMORY_API_KEY_READ=${MEMORY_API_KEY_READ:-}
+      - MEMORY_API_KEY_BUFFER=${MEMORY_API_KEY_BUFFER:-}
+      - MEMORY_API_KEY_WRITE=${MEMORY_API_KEY_WRITE:-}
+      - MEMORY_API_KEY_DUMP=${MEMORY_API_KEY_DUMP:-}
+      - MEMORY_API_KEY_ADMIN=${MEMORY_API_KEY_ADMIN:-}
     volumes:
       - ./data:/app/data
     depends_on:

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db, pagination
+from app.api.deps import get_db, pagination, require_read, require_write
 from app.models.schemas import TagCreate, TagResponse
 from app.services.tag_service import create_tag, list_tags
 
@@ -14,7 +14,7 @@ class TagWithCount(TagResponse):
 
 
 @router.get("/", response_model=list[TagWithCount])
-def list_tags_endpoint(page: dict = Depends(pagination), db: Session = Depends(get_db)):
+def list_tags_endpoint(page: dict = Depends(pagination), db: Session = Depends(get_db), _: None = Depends(require_read)):
     rows = list_tags(db, **page)
     results = []
     for tag, count in rows:
@@ -25,5 +25,5 @@ def list_tags_endpoint(page: dict = Depends(pagination), db: Session = Depends(g
 
 
 @router.post("/", response_model=TagResponse, status_code=201)
-def create_tag_endpoint(body: TagCreate, db: Session = Depends(get_db)):
+def create_tag_endpoint(body: TagCreate, db: Session = Depends(get_db), _: None = Depends(require_write)):
     return create_tag(db, body.name)

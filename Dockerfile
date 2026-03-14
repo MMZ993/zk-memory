@@ -12,8 +12,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 COPY requirements.txt .
 RUN uv pip install --system -r requirements.txt
 
-# Copy only application source — no docs, README, tests, or config files
+# Copy application source and Alembic migrations
 COPY src/ .
+COPY alembic/ alembic/
+COPY alembic.ini .
 
 RUN mkdir -p /app/data /app/data/notes /app/data/buffer /app/data/backups
 

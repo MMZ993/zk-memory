@@ -14,7 +14,7 @@ async def search_semantic(
     tags: list[str] | None = None,
 ) -> list[tuple[Note, float]]:
     """Vector similarity search. Returns (note, score) pairs sorted by score desc."""
-    query_vector = await generate_embedding(query)
+    query_vector = await generate_embedding(query, task="query")
     results = await search_embeddings(query_vector, limit=limit, tag_filter=tags)
     note_ids = [str(r.id) for r in results]
     scores = {str(r.id): r.score for r in results}

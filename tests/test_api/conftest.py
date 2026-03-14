@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
+from unittest.mock import patch
 
 from app.models.database import Base
 from app.api.deps import get_db
@@ -37,9 +38,11 @@ app.dependency_overrides[get_db] = override_db
 
 @pytest.fixture(autouse=True)
 def reset_db():
-    """Create tables before each test, drop after."""
+    """Create tables before each test, drop after.
+    init_db is mocked so Alembic doesn't run against the real DB during tests."""
     Base.metadata.create_all(bind=_engine)
-    yield
+    with patch("app.db.session.init_db"):
+        yield
     Base.metadata.drop_all(bind=_engine)
 
 
