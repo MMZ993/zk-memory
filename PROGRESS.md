@@ -80,6 +80,12 @@ The implementation guide at `docs/implementation-guide.md` has the step-by-step 
 
 **Project is complete.** All 77 tests pass. To verify the running application, start Qdrant and run `PYTHONPATH=src uvicorn main:app --reload`.
 
+## Scoped API Keys (completed 2026-03-14)
+
+5 independent `MEMORY_API_KEY_READ/BUFFER/WRITE/DUMP/ADMIN` env vars replace single `API_KEY`.
+Flat scopes, admin bypasses all checks, auth disabled when all vars unset.
+401 = missing key, 403 = wrong scope. See `docs/api-scopes.md`.
+
 ## Alembic Setup (completed 2026-03-13)
 
 `alembic/` directory + `alembic.ini` added at project root.
