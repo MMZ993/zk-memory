@@ -100,16 +100,21 @@ services:
 
 ## Phase Plan
 
-### Phase 1 — PostgreSQL DB support (this branch)
+### Phase 1 — PostgreSQL DB support ✅ COMPLETE (2026-03-14)
 
-1. `session.py` — dialect-aware engine creation
-2. `alembic/env.py` — guard pragma listener behind SQLite check
-3. `alembic/versions/d584390723bb` — make FTS5 section dialect-aware; add PostgreSQL `tsvector` path
-4. `search_service.py` — branch keyword search on dialect
-5. `pyproject.toml` — add `psycopg2-binary`
-6. `docker-compose.postgres.yml` — PostgreSQL + Qdrant compose file
-7. Update `.env.example` with PostgreSQL `DATABASE_URL` example
-8. Tests — add a PostgreSQL-dialect unit test for keyword search (mock dialect)
+1. ✅ `session.py` — dialect-aware engine creation
+2. ✅ `alembic/env.py` — guard pragma listener behind SQLite check
+3. ✅ `alembic/versions/d584390723bb` — make FTS5 section dialect-aware; add PostgreSQL `tsvector` path
+4. ✅ `search_service.py` — branch keyword search on `settings.db_backend`
+5. ✅ `pyproject.toml` + `requirements.txt` — `psycopg[binary]>=3.1.0` (psycopg3, not psycopg2)
+6. ✅ `docker-compose.postgres.yml` — PostgreSQL + Qdrant compose file
+7. ✅ `.env.example` — `DB_BACKEND` + `postgresql+psycopg://` example (URL scheme required for psycopg3)
+8. ✅ Integration tests — `docker-compose.test.postgres.yml` + `make test-integration-postgres`; 48/48 pass
+9. ✅ `scripts/dev-reset-postgres.sh` — dev wipe utility
+
+**Key decision made during implementation:** Added explicit `DB_BACKEND=sqlite|postgres` env var (rather than inferring from URL) for clarity in Docker deployments.
+
+**Driver note:** URL must use `postgresql+psycopg://` (not `postgresql://`) to select psycopg3. Using `postgresql://` causes SQLAlchemy to look for the old `psycopg2` package.
 
 ### Phase 2 — pgvector as Qdrant alternative (separate branch)
 

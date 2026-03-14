@@ -2,26 +2,30 @@
 
 ## Previous Session Summary (2026-03-14)
 
-### Scoped API keys
+### PostgreSQL Phase 1 — complete
 
-Replaced single `API_KEY` with 5 independent flat scoped keys.
+Implemented full dialect-aware SQLite + PostgreSQL support on branch `feat/postgres-migration`.
 
-**Design:** `MEMORY_API_KEY_READ/BUFFER/WRITE/DUMP/ADMIN` — flat, no implicit hierarchy except admin. Auth disabled when all vars empty. Each var accepts comma-separated keys. 401 = missing key, 403 = wrong scope (agent-readable errors).
+**Key decisions made this session:**
+- `DB_BACKEND=sqlite|postgres` env var added — explicit, not inferred from URL
+- Driver: `psycopg[binary]` (psycopg3) — URL must use `postgresql+psycopg://` scheme
+- FTS language: `'english'` hardcoded (stemming enabled; no env var needed)
+- Dialect detection in migrations: `op.get_bind().dialect.name` — no deprecated APIs
 
 **Changed files:**
-- `src/app/core/config.py` — 5 `memory_api_key_*` fields replace `api_key`
-- `src/app/api/deps.py` — `_check()` + `require_read/buffer/write/dump/admin` dependencies
-- All 6 route files — each endpoint annotated with correct `require_*` dependency
-- `.env.example` / `docker-compose.yml` — updated auth section
-- `cli/README.md` — bash function pattern for multi-scope agents on same machine
-- `docs/api-scopes.md` — full scope reference (endpoint map, agent config examples, key generation)
+- `src/app/core/config.py` — `db_backend: str = "sqlite"` field
+- `src/app/db/session.py` — SQLite-only `check_same_thread` + WAL/FK pragmas
+- `alembic/env.py` — pragma listener guarded behind SQLite check
+- `alembic/versions/d584390723bb` — FTS5 path (SQLite) vs tsvector+GIN+trigger path (PostgreSQL)
+- `src/app/services/search_service.py` — keyword search branches on `db_backend`
+- `requirements.txt` + `pyproject.toml` — `psycopg[binary]>=3.1.0`
+- `.env.example` + `docker-compose.yml` — `DB_BACKEND` added
+- `docker-compose.postgres.yml` — production PostgreSQL + Qdrant compose
+- `docker-compose.test.postgres.yml` — isolated test stack (API: 8002, PG: 5433, Qdrant: 6335)
+- `Makefile` — `test-integration-postgres` / `test-integration-postgres-down`
+- `scripts/dev-reset-postgres.sh` — wipe + recreate schema for dev/test postgres stacks
 
-**All 77 unit tests still pass.**
-
-### PostgreSQL migration — branch + plan created
-
-Branch: `feat/postgres-migration`
-Plan: `docs/plan-postgres-migration.md`
+**Test status: 77 unit + 48 integration (SQLite) + 48 integration (PostgreSQL) = 173 tests, all passing.**
 
 ---
 
@@ -34,23 +38,22 @@ Plan: `docs/plan-postgres-migration.md`
 
 ## Next Steps (prioritized)
 
-### 1. PostgreSQL support — Phase 1 (branch ready: `feat/postgres-migration`)
+### 1. Merge `feat/postgres-migration` → `main`
 
-See `docs/plan-postgres-migration.md` for full details. Work items:
+Phase 1 is complete and all tests pass. Ready to merge.
 
-1. **`session.py`** — dialect-aware engine: only apply `check_same_thread` and WAL/FK pragmas for SQLite
-2. **`alembic/env.py`** — guard `_set_sqlite_pragmas` listener behind SQLite URL check
-3. **`alembic/versions/d584390723bb`** — make FTS5 section dialect-aware (`op.get_bind().dialect.name`); add PostgreSQL path: `search_vector tsvector` column + GIN index + PG triggers
-4. **`search_service.py`** — branch `search_keyword()` on dialect: SQLite → FTS5 MATCH, PostgreSQL → `tsvector @@ plainto_tsquery`
-5. **`pyproject.toml`** — add `psycopg2-binary`
-6. **`docker-compose.postgres.yml`** — PostgreSQL + Qdrant compose file
-7. **`.env.example`** — add PostgreSQL `DATABASE_URL` example (commented out)
-8. **Tests** — dialect-aware unit tests for keyword search
+### 2. PostgreSQL Phase 2 — pgvector as Qdrant alternative (new branch)
 
-### 2. PostgreSQL + pgvector — Phase 2 (separate branch after Phase 1)
-
-Eliminate Qdrant for single-node deployments. `VECTOR_BACKEND=qdrant|pgvector`.
+Branch: `feat/pgvector`
 See `docs/plan-postgres-migration.md` Phase 2 section.
+
+Work items:
+1. `config.py` — add `vector_backend: str = "qdrant"` (values: `qdrant` | `pgvector`)
+2. New `src/app/db/pgvector.py` — pgvector client matching Qdrant client interface
+3. `embedding_service.py` — route upsert/search through backend abstraction
+4. Alembic migration — add `embedding vector(768)` column to `notes` when pgvector backend
+5. `docker-compose.simple.yml` — PostgreSQL + pgvector, no Qdrant (true single-image setup)
+6. `pyproject.toml` + `requirements.txt` — `pgvector` Python package
 
 ### 3. GitLab CI (future)
 
@@ -64,35 +67,45 @@ Wrap the memory API as an MCP server for Claude Desktop / other clients.
 
 ## Important Notes
 
-### Active branch
+### Active branches
 
 ```bash
-git checkout feat/postgres-migration   # PostgreSQL work goes here
-git checkout main                      # stable, all tests passing
+git checkout feat/postgres-migration   # Phase 1 complete, ready to merge
+git checkout main                      # stable, SQLite only
 ```
 
 ### Current test status
 
-- 77 unit tests + 48 integration tests (Docker stack)
-- Run unit: `source .venv/bin/activate && pytest tests/test_services/ tests/test_api/ -v`
-- Run integration: `make test-integration`
+- 77 unit tests + 48 SQLite integration + 48 PostgreSQL integration = 173 total
+- Unit: `source .venv/bin/activate && pytest tests/test_services/ tests/test_api/ -v`
+- Integration (SQLite): `make test-integration`
+- Integration (PostgreSQL): `make test-integration-postgres`
 
-### Scoped API keys — auth behaviour
+### DB_BACKEND env var
 
-- All `MEMORY_API_KEY_*` unset → auth disabled (dev/local mode)
-- Any var set → auth enforced on all non-public endpoints
-- `MEMORY_API_KEY_ADMIN` passes every scope check
-- 401 = no key sent, 403 = key present but wrong scope
-- See `docs/api-scopes.md` for full endpoint → scope mapping
+```
+DB_BACKEND=sqlite    # default — SQLite + FTS5
+DB_BACKEND=postgres  # PostgreSQL + tsvector
+```
 
-### Bash function pattern (CLI multi-scope)
+Must match the `DATABASE_URL` scheme. When `postgres`, URL must be `postgresql+psycopg://...` (psycopg3 driver — `postgresql://` would try to load psycopg2 which is not installed).
+
+### Dev reset scripts
 
 ```bash
-memory_read()   { MEMORY_API_KEY=key_ro_xxx  memory "$@"; }
-memory_buffer() { MEMORY_API_KEY=key_buf_xxx memory "$@"; }
-memory_write()  { MEMORY_API_KEY=key_rw_xxx  memory "$@"; }
-memory_admin()  { MEMORY_API_KEY=key_adm_xxx memory "$@"; }
+./scripts/dev-reset-postgres.sh        # wipe prod postgres stack
+./scripts/dev-reset-postgres.sh test   # wipe test postgres stack (port 8002)
 ```
+
+Drops schema, re-runs Alembic, deletes Qdrant collection.
+
+### Deployment mode ladder
+
+| Mode | Stack | Compose file |
+|---|---|---|
+| Dev / home lab | SQLite + Qdrant | `docker-compose.yml` |
+| Distributed / k8s | PostgreSQL + Qdrant | `docker-compose.postgres.yml` |
+| Single-node prod | PostgreSQL + pgvector | `docker-compose.simple.yml` (Phase 2) |
 
 ### Alembic workflow
 
@@ -103,6 +116,8 @@ PYTHONPATH=src alembic revision --autogenerate -m "description"
 PYTHONPATH=src alembic downgrade -1
 PYTHONPATH=src alembic stamp head   # for existing DBs without alembic_version
 ```
+
+Note: FTS5 virtual table, tsvector column, GIN index, and triggers are **not** visible to autogenerate — they are managed manually in the migration file.
 
 ### Seeding the DB for manual CLI testing
 
@@ -123,27 +138,19 @@ cd cli && go build -o dist/memory . && cd ..
 MEMORY_API_URL=http://localhost:8000 cli/dist/memory notes list --pretty
 ```
 
-### PostgreSQL migration — open questions for next session
+### Scoped API keys — auth behaviour
 
-1. **Driver**: `psycopg2-binary` (sync, simpler) recommended over `asyncpg` — ORM layer is sync
-2. **FTS language**: `'simple'` (multilingual safe, no stemming) vs `'english'` — make it `FTS_LANGUAGE` env var defaulting to `simple`
-3. **Phase 2 timing**: implement pgvector in same branch or separate? Recommend separate.
-
-### Deployment mode ladder (planned)
-
-| Mode | Stack | Compose file |
-|---|---|---|
-| Dev / home lab | SQLite + Qdrant | `docker-compose.yml` (current) |
-| Single-node prod | PostgreSQL + pgvector | `docker-compose.simple.yml` (Phase 2) |
-| Distributed / k8s | PostgreSQL + Qdrant | `docker-compose.postgres.yml` (Phase 1) |
+- All `MEMORY_API_KEY_*` unset → auth disabled (dev/local mode)
+- Any var set → auth enforced on all non-public endpoints
+- `MEMORY_API_KEY_ADMIN` passes every scope check
+- 401 = no key sent, 403 = key present but wrong scope
+- See `docs/api-scopes.md` for full endpoint → scope mapping
 
 ---
 
 ## Previous NEXT_SESSION.md Review
 
-- ✅ Scoped API keys — fully implemented and committed
-- ✅ Alembic setup — completed previous session, committed this session
+- ✅ PostgreSQL Phase 1 — fully implemented, tested, 48/48 integration tests passing
 - ⬜ Test `memory dump` against live API — still deferred (low priority)
 - ⬜ Fix `LinkResponse` embed in api-specification.md — still deferred (low priority)
 - ⬜ GitLab CI / MCP server — still future
-- ✅ PostgreSQL migration — branch created, plan written, ready to implement
