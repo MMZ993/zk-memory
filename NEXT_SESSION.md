@@ -42,26 +42,18 @@ Implemented full dialect-aware SQLite + PostgreSQL support on branch `feat/postg
 
 Phase 1 is complete and all tests pass. Ready to merge.
 
-### 2. PostgreSQL Phase 2 — pgvector as Qdrant alternative (new branch)
-
-Branch: `feat/pgvector`
-See `docs/plan-postgres-migration.md` Phase 2 section.
-
-Work items:
-1. `config.py` — add `vector_backend: str = "qdrant"` (values: `qdrant` | `pgvector`)
-2. New `src/app/db/pgvector.py` — pgvector client matching Qdrant client interface
-3. `embedding_service.py` — route upsert/search through backend abstraction
-4. Alembic migration — add `embedding vector(768)` column to `notes` when pgvector backend
-5. `docker-compose.simple.yml` — PostgreSQL + pgvector, no Qdrant (true single-image setup)
-6. `pyproject.toml` + `requirements.txt` — `pgvector` Python package
-
-### 3. GitLab CI (future)
+### 2. GitLab CI (future)
 
 Pipeline: unit tests on every push, integration tests on release with test LXC.
 
-### 4. MCP server (future)
+### 3. MCP server (future)
 
 Wrap the memory API as an MCP server for Claude Desktop / other clients.
+
+### Out of scope (decided 2026-03-14)
+
+- **pgvector** — Qdrant stays as the only vector backend. `synced` column handles consistency. pgvector may be revisited alongside MCP if there's a compelling reason.
+- **sqlite-vec** — same reasoning; not worth the complexity for dev mode.
 
 ---
 
