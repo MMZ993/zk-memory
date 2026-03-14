@@ -1,0 +1,65 @@
+# docker-compose.test.auth.yml — Auth integration test stack
+#
+# Runs the API with all five MEMORY_API_KEY_* scopes configured so that
+# auth behaviour (401 / 403 / scope routing) can be tested end-to-end.
+#
+# Test keys (hardcoded for test use only — never use in production):
+#   READ   : test_key_read
+#   BUFFER : test_key_buffer
+#   WRITE  : test_key_write
+#   DUMP   : test_key_dump
+#   ADMIN  : test_key_admin
+#
+# Ports (separate from other test stacks):
+#   API:    localhost:8003
+#   Qdrant: localhost:6336
+#
+# Usage:
+#   make test-integration-auth
+#
+# Or manually:
+#   docker compose -f docker-compose.test.auth.yml up -d --build
+#   INTEGRATION_TESTS=1 AUTH_TESTS=1 AUTH_API_URL=http://localhost:8003 \
+#     pytest tests/integration/test_auth.py -v
+#   docker compose -f docker-compose.test.auth.yml down -v
+#
+# Requires: Ollama with nomic-embed-text running on the host (port 11434).
+
+version: '3.8'
+
+services:
+  agents-memory-test-auth:
+    build: .
+    network_mode: host
+    command: uvicorn main:app --host 0.0.0.0 --port 8003
+    environment:
+      - DATABASE_URL=sqlite:///./data/test_auth.db
+      - QDRANT_HOST=localhost
+      - QDRANT_PORT=6336
+      - QDRANT_COLLECTION=test_memory_auth
+      - EMBEDDING_PROVIDER=ollama
+      - EMBEDDING_MODEL=nomic-embed-text
+      - EMBEDDING_DIMENSION=768
+      - OLLAMA_HOST=http://localhost:11434
+      - BUFFER_RETENTION_DAYS=7
+      - LOG_LEVEL=INFO
+      - MEMORY_API_KEY_READ=test_key_read
+      - MEMORY_API_KEY_BUFFER=test_key_buffer
+      - MEMORY_API_KEY_WRITE=test_key_write
+      - MEMORY_API_KEY_DUMP=test_key_dump
+      - MEMORY_API_KEY_ADMIN=test_key_admin
+    volumes:
+      - test_auth_data:/app/data
+    restart: "no"
+
+  qdrant-test-auth:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6336:6333"
+    volumes:
+      - test_auth_qdrant:/qdrant/storage
+    restart: "no"
+
+volumes:
+  test_auth_data:
+  test_auth_qdrant:
