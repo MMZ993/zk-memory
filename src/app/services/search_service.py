@@ -28,26 +28,42 @@ def search_keyword(
     query: str,
     limit: int = 10,
 ) -> list[tuple[Note, float]]:
-    """Full-text search via SQLite FTS5. Returns (note, 1.0) pairs in rank order."""
+    """Full-text search. SQLite uses FTS5; PostgreSQL uses tsvector."""
     from sqlalchemy import text
-    safe_query = query.replace('"', '""')
-    sql = text("""
-        SELECT n.id FROM notes n
-        JOIN notes_fts fts ON n.id = fts.note_id
-        WHERE notes_fts MATCH :q
-        ORDER BY rank
-        LIMIT :limit
-    """)
+    from app.core.config import get_settings
+    settings = get_settings()
+
     try:
-        rows = db.execute(sql, {"q": f'"{safe_query}"', "limit": limit}).fetchall()
+        if settings.db_backend == "postgres":
+            sql = text("""
+                SELECT id, ts_rank(search_vector, plainto_tsquery('english', :q)) AS rank
+                FROM notes
+                WHERE search_vector @@ plainto_tsquery('english', :q)
+                ORDER BY rank DESC
+                LIMIT :limit
+            """)
+            rows = db.execute(sql, {"q": query, "limit": limit}).fetchall()
+            note_ids = [r[0] for r in rows]
+            scores = {r[0]: float(r[1]) for r in rows}
+        else:
+            safe_query = query.replace('"', '""')
+            sql = text("""
+                SELECT n.id FROM notes n
+                JOIN notes_fts fts ON n.id = fts.note_id
+                WHERE notes_fts MATCH :q
+                ORDER BY rank
+                LIMIT :limit
+            """)
+            rows = db.execute(sql, {"q": f'"{safe_query}"', "limit": limit}).fetchall()
+            note_ids = [r[0] for r in rows]
+            scores = {nid: 1.0 for nid in note_ids}
     except Exception:
-        # FTS5 table may not exist (e.g. in test DBs created without init_db())
         return []
-    note_ids = [r[0] for r in rows]
+
     if not note_ids:
         return []
     notes_map = {n.id: n for n in db.query(Note).filter(Note.id.in_(note_ids)).all()}
-    return [(notes_map[nid], 1.0) for nid in note_ids if nid in notes_map]
+    return [(notes_map[nid], scores.get(nid, 1.0)) for nid in note_ids if nid in notes_map]
 
 
 async def search_hybrid(

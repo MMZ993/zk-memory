@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     memory_api_key_admin: str = ""
 
     # Database
+    # DB_BACKEND: "sqlite" (default) | "postgres"
+    # Must match the DATABASE_URL scheme. Used by the app to select
+    # dialect-specific SQL (FTS5 vs tsvector) without parsing the URL at runtime.
+    db_backend: str = "sqlite"
     database_url: str = "sqlite:///./data/memory.db"
 
     # Qdrant

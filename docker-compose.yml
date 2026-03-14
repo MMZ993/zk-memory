@@ -6,6 +6,7 @@ services:
     ports:
       - "8000:8000"
     environment:
+      - DB_BACKEND=sqlite
       - DATABASE_URL=sqlite:///./data/memory.db
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333

@@ -53,7 +53,8 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    event.listen(connectable, "connect", _set_sqlite_pragmas)
+    if settings.db_backend == "sqlite":
+        event.listen(connectable, "connect", _set_sqlite_pragmas)
 
     with connectable.connect() as connection:
         context.configure(

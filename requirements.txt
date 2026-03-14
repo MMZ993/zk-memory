@@ -6,6 +6,7 @@ python-multipart>=0.0.22
 # Database
 sqlalchemy>=2.0.48
 alembic>=1.18.0
+psycopg[binary]>=3.1.0
 
 # Vector Database
 qdrant-client>=1.17.0

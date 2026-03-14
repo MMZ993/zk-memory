@@ -10,20 +10,22 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
+_is_sqlite = settings.db_backend == "sqlite"
+
 engine = create_engine(
     settings.database_url,
     echo=settings.debug,
-    connect_args={"check_same_thread": False},
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
 )
 
-
-@event.listens_for(engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    """Enable WAL mode for better concurrency during background sync jobs."""
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+if _is_sqlite:
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        """Enable WAL mode for better concurrency during background sync jobs."""
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

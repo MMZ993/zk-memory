@@ -1,0 +1,72 @@
+# docker-compose.postgres.yml — PostgreSQL + Qdrant (distributed / k8s-style)
+# Usage: docker compose -f docker-compose.postgres.yml up -d
+#
+# Deployment mode: PostgreSQL (structured data) + Qdrant (vector search)
+# Use this for production or multi-node deployments where you want a proper
+# relational DB but keep Qdrant for vector search on a separate node.
+#
+# For single-node prod with pgvector (no Qdrant), see docker-compose.simple.yml (Phase 2).
+
+version: '3.8'
+
+services:
+  agents-memory:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_BACKEND=postgres
+      - DATABASE_URL=postgresql+psycopg://memory:memory@postgres:5432/memory
+      - QDRANT_HOST=qdrant
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=notes_embeddings
+      - EMBEDDING_PROVIDER=openai
+      - EMBEDDING_MODEL=text-embedding-ada-002
+      - EMBEDDING_DIMENSION=1536
+      - EMBEDDING_TASK_PREFIX=true
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NOTE_MAX_CONTENT_LENGTH=2048
+      - BUFFER_RETENTION_DAYS=7
+      - MARKDOWN_DIR=./data/notes
+      - LOG_LEVEL=INFO
+      - MEMORY_API_KEY_READ=${MEMORY_API_KEY_READ:-}
+      - MEMORY_API_KEY_BUFFER=${MEMORY_API_KEY_BUFFER:-}
+      - MEMORY_API_KEY_WRITE=${MEMORY_API_KEY_WRITE:-}
+      - MEMORY_API_KEY_DUMP=${MEMORY_API_KEY_DUMP:-}
+      - MEMORY_API_KEY_ADMIN=${MEMORY_API_KEY_ADMIN:-}
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=memory
+      - POSTGRES_PASSWORD=memory
+      - POSTGRES_DB=memory
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
