@@ -50,7 +50,7 @@ cd agents_memory
 
 # Copy environment file
 cp .env.example .env
-# Edit .env with your OPENAI_API_KEY
+# Edit .env (Ollama is default)
 
 # Start services
 docker-compose up -d
@@ -62,7 +62,7 @@ docker-compose up -d
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Start Qdrant
 docker run -p 6333:6333 qdrant/qdrant
@@ -150,11 +150,11 @@ Key environment variables:
 |-----------|----------|-------------|
 | `DATABASE_URL` | `sqlite:///./data/memory.db` | SQLite database path |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
-| `EMBEDDING_PROVIDER` | `ollama` | `ollama` or `openai` |
+| `EMBEDDING_PROVIDER` | `ollama` | `ollama` (default) or `openai` |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Model name for the chosen provider |
 | `EMBEDDING_TASK_PREFIX` | `false` | Prepend `search_document:`/`search_query:` task prefixes. Improves retrieval quality with nomic-embed-text and mxbai-embed-large. **Set to `true` for fresh deployments.** Changing on an existing index requires a full re-embed via the admin API. |
 | `NOTE_MAX_CONTENT_LENGTH` | `2048` | Max note content size in characters. `0` = unlimited. Notes over the limit are rejected with HTTP 422. |
-| `OPENAI_API_KEY` | — | Required only if `EMBEDDING_PROVIDER=openai` |
+| `OPENAI_API_KEY` | — | Optional; only if `EMBEDDING_PROVIDER=openai` |
 | `BUFFER_RETENTION_DAYS` | `7` | Days to keep processed buffer notes (`0` = keep forever) |
 
 See [Configuration](docs/configuration.md) for complete reference.
@@ -177,7 +177,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Run tests
 pytest tests/ -v

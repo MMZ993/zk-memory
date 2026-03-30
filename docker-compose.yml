@@ -11,11 +11,11 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - QDRANT_COLLECTION=notes_embeddings
-      - EMBEDDING_PROVIDER=openai
-      - EMBEDDING_MODEL=text-embedding-ada-002
-      - EMBEDDING_DIMENSION=1536
+      - EMBEDDING_PROVIDER=ollama
+      - EMBEDDING_MODEL=nomic-embed-text
+      - EMBEDDING_DIMENSION=768
       - EMBEDDING_TASK_PREFIX=true
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OLLAMA_HOST=http://host.docker.internal:11434
       - NOTE_MAX_CONTENT_LENGTH=2048
       - BUFFER_RETENTION_DAYS=7
       - MARKDOWN_DIR=./data/notes
