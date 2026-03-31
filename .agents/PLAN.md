@@ -1,16 +1,13 @@
 # Session Plan — 2026-03-31
 
 ## Goal
-Refactor admin async jobs to use safe task boundaries with fresh DB sessions and no request-scoped session leakage.
+Fix Docker integration test startup contract drift so all integration test targets run successfully again.
 
 ## Tasks
-- [x] Add/adjust tests for admin async job paths to assert task-safe inputs and fresh-session execution boundaries (td:td-5266e0)
-- [x] Refactor admin async scheduling/execution to pass primitive IDs/payloads only and create DB sessions inside worker execution (td:td-5266e0)
-- [x] Add structured error logging and retry metadata handling for admin async failures where applicable (td:td-5266e0)
-- [x] Run relevant test suites and resolve regressions for admin async job changes (td:td-5266e0)
+- [x] Update integration Docker compose commands to match image runtime (`uv run uvicorn ...`) for sqlite/postgres/auth stacks (td:td-525e18)
+- [x] Run all integration make targets and confirm end-to-end startup/test execution path is healthy (td:td-525e18)
+- [x] Verify docs/scripts references for integration commands remain accurate after compose fixes (td:td-525e18)
 
 ## Notes
-- Verification complete: two PRD-aligned items are now closed in `td` (`td-1e0c4f`, `td-0717d4`).
-- `td-5266e0` is now marked `in_progress` for this session.
-- Follow project rule: no request-scoped `Session`/ORM objects in background tasks; use IDs + fresh sessions.
-- Reliability approach for this project remains intentionally simple: single-process writer assumptions (overnight admin/write jobs), no distributed lock coordination, avoid additional moving parts.
+- Reprioritized after verification findings: all integration compose targets fail with `exec: "uvicorn": executable file not found in $PATH`.
+- `td-525e18` is now `in_progress`; `td-9c0794` moved back to `open` and remains next reliability item after this fix.

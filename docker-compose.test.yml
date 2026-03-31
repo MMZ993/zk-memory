@@ -15,7 +15,7 @@ services:
   agents-memory-test:
     build: .
     network_mode: host
-    command: uvicorn main:app --host 0.0.0.0 --port 8001
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8001
     environment:
       - DATABASE_URL=sqlite:///./data/test.db
       - QDRANT_HOST=localhost

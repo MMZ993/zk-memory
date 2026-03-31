@@ -36,3 +36,26 @@ def test_cors_settings_are_exposed_in_runtime_and_docs_surfaces():
 
     assert "comma-separated or JSON list" in docs
     assert "Set empty to disable fallback" in docs
+
+
+def test_integration_compose_commands_use_uv_run_uvicorn():
+    compose_sqlite = Path("docker-compose.test.yml").read_text()
+    compose_postgres = Path("docker-compose.test.postgres.yml").read_text()
+    compose_auth = Path("docker-compose.test.auth.yml").read_text()
+
+    assert (
+        "command: uv run uvicorn main:app --host 0.0.0.0 --port 8001" in compose_sqlite
+    )
+    assert (
+        "command: uv run uvicorn main:app --host 0.0.0.0 --port 8002"
+        in compose_postgres
+    )
+    assert "command: uv run uvicorn main:app --host 0.0.0.0 --port 8003" in compose_auth
+
+
+def test_readme_documents_integration_make_targets():
+    readme = Path("README.md").read_text()
+
+    assert "make test-integration" in readme
+    assert "make test-integration-postgres" in readme
+    assert "make test-integration-auth" in readme

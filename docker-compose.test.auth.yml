@@ -31,7 +31,7 @@ services:
   agents-memory-test-auth:
     build: .
     network_mode: host
-    command: uvicorn main:app --host 0.0.0.0 --port 8003
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8003
     environment:
       - DATABASE_URL=sqlite:///./data/test_auth.db
       - QDRANT_HOST=localhost

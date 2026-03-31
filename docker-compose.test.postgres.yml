@@ -24,7 +24,7 @@ services:
   agents-memory-test-postgres:
     build: .
     network_mode: host
-    command: uvicorn main:app --host 0.0.0.0 --port 8002
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8002
     environment:
       - DB_BACKEND=postgres
       - DATABASE_URL=postgresql+psycopg://memory:memory@localhost:5433/memory_test

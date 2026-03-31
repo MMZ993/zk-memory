@@ -190,6 +190,14 @@ pytest tests/ -v
 uvicorn main:app --reload
 ```
 
+### Integration test targets
+
+```bash
+make test-integration
+make test-integration-postgres
+make test-integration-auth
+```
+
 ### Project Structure
 
 ```
