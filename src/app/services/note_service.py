@@ -6,7 +6,7 @@ import uuid
 
 import httpx
 from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Session
 
 from app.models.database import Note, Tag, NoteTag, Link
@@ -54,7 +54,7 @@ def _compute_sync_retry_delay(attempt: int) -> float:
 
 def _get_tag_names(db: Session, note_id: str) -> list[str]:
     return [
-        row.name
+        row.name.lower()
         for row in db.query(Tag)
         .join(NoteTag, Tag.id == NoteTag.tag_id)
         .filter(NoteTag.note_id == note_id)
@@ -64,13 +64,41 @@ def _get_tag_names(db: Session, note_id: str) -> list[str]:
 
 def _save_tags(db: Session, note_id: str, tag_names: list[str]):
     """Upsert tags and create NoteTag associations."""
-    for name in tag_names:
+    for name in _normalize_tag_names(tag_names):
         tag = db.query(Tag).filter(Tag.name == name).first()
-        if not tag:
+        if tag:
+            db.add(NoteTag(note_id=note_id, tag_id=tag.id, created_at=_now()))
+            continue
+
+        tag = (
+            db.query(Tag)
+            .filter(func.lower(Tag.name) == name)
+            .order_by(Tag.created_at.asc())
+            .first()
+        )
+        if tag:
+            tag.name = name
+            db.flush()
+        else:
             tag = Tag(id=str(uuid.uuid4()), name=name, created_at=_now())
             db.add(tag)
             db.flush()
         db.add(NoteTag(note_id=note_id, tag_id=tag.id, created_at=_now()))
+
+
+def _normalize_tag_names(tag_names: list[str] | None) -> list[str]:
+    if not tag_names:
+        return []
+
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for name in tag_names:
+        normalized_name = name.strip().lower()
+        if not normalized_name or normalized_name in seen:
+            continue
+        seen.add(normalized_name)
+        normalized.append(normalized_name)
+    return normalized
 
 
 # ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -175,7 +203,7 @@ async def create_note(db: Session, note_data: dict, background_tasks=None) -> No
     db.add(note)
     db.flush()
 
-    tags = note_data.get("tags", [])
+    tags = _normalize_tag_names(note_data.get("tags", []))
     _save_tags(db, note.id, tags)
     db.commit()
     db.refresh(note)
@@ -202,10 +230,11 @@ def list_notes(
 ) -> list[Note]:
     query = db.query(Note)
     if tags:
+        normalized_tags = [t.lower() for t in tags]
         query = (
             query.join(NoteTag, Note.id == NoteTag.note_id)
             .join(Tag, NoteTag.tag_id == Tag.id)
-            .filter(Tag.name.in_(tags))
+            .filter(func.lower(Tag.name).in_(normalized_tags))
             .distinct()
         )
     sort_col = Note.updated_at if sort == "updated_at" else Note.created_at
@@ -231,7 +260,7 @@ async def update_note(
 
     if "tags" in note_data:
         db.query(NoteTag).filter(NoteTag.note_id == note_id).delete()
-        tags = note_data["tags"]
+        tags = _normalize_tag_names(note_data["tags"])
         _save_tags(db, note.id, tags)
     else:
         tags = _get_tag_names(db, note_id)

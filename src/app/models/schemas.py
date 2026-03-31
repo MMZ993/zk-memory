@@ -5,12 +5,16 @@ from datetime import datetime
 from app.models.enums import SearchType
 from app.core.config import get_settings
 
+NOTE_TITLE_MAX_LENGTH = 255
+TAG_NAME_MAX_LENGTH = 100
+
 
 def _max_content_length() -> int:
     return get_settings().note_max_content_length
 
 
 # ── Request schemas ────────────────────────────────────────────────────────────
+
 
 class BufferNoteCreate(BaseModel):
     content: str
@@ -28,7 +32,31 @@ class NoteCreate(BaseModel):
     def content_length(cls, v: str) -> str:
         limit = _max_content_length()
         if limit > 0 and len(v) > limit:
-            raise ValueError(f"content exceeds maximum length of {limit} characters (got {len(v)})")
+            raise ValueError(
+                f"content exceeds maximum length of {limit} characters (got {len(v)})"
+            )
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def title_length(cls, v: str) -> str:
+        if len(v) > NOTE_TITLE_MAX_LENGTH:
+            raise ValueError(
+                f"title must be at most {NOTE_TITLE_MAX_LENGTH} characters"
+            )
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def tags_length(cls, v: List[str]) -> List[str]:
+        for tag in v:
+            normalized_tag = tag.strip()
+            if not normalized_tag:
+                raise ValueError("tag values cannot be empty")
+            if len(normalized_tag) > TAG_NAME_MAX_LENGTH:
+                raise ValueError(
+                    f"tag must be at most {TAG_NAME_MAX_LENGTH} characters"
+                )
         return v
 
 
@@ -45,14 +73,42 @@ class NoteUpdate(BaseModel):
             return v
         limit = _max_content_length()
         if limit > 0 and len(v) > limit:
-            raise ValueError(f"content exceeds maximum length of {limit} characters (got {len(v)})")
+            raise ValueError(
+                f"content exceeds maximum length of {limit} characters (got {len(v)})"
+            )
+        return v
+
+    @field_validator("title")
+    @classmethod
+    def title_length(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        if len(v) > NOTE_TITLE_MAX_LENGTH:
+            raise ValueError(
+                f"title must be at most {NOTE_TITLE_MAX_LENGTH} characters"
+            )
+        return v
+
+    @field_validator("tags")
+    @classmethod
+    def tags_length(cls, v: Optional[List[str]]) -> Optional[List[str]]:
+        if v is None:
+            return v
+        for tag in v:
+            normalized_tag = tag.strip()
+            if not normalized_tag:
+                raise ValueError("tag values cannot be empty")
+            if len(normalized_tag) > TAG_NAME_MAX_LENGTH:
+                raise ValueError(
+                    f"tag must be at most {TAG_NAME_MAX_LENGTH} characters"
+                )
         return v
 
 
 class LinkCreate(BaseModel):
     source_id: str
     target_id: str
-    relation_type: str          # relation type name (looked up or created)
+    relation_type: str  # relation type name (looked up or created)
     description: Optional[str] = None
 
 
@@ -65,6 +121,16 @@ class RelationTypeCreate(BaseModel):
 class TagCreate(BaseModel):
     name: str
 
+    @field_validator("name")
+    @classmethod
+    def name_constraints(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if not normalized:
+            raise ValueError("tag values cannot be empty")
+        if len(normalized) > TAG_NAME_MAX_LENGTH:
+            raise ValueError(f"tag must be at most {TAG_NAME_MAX_LENGTH} characters")
+        return normalized
+
 
 class SearchRequest(BaseModel):
     q: str
@@ -76,6 +142,7 @@ class SearchRequest(BaseModel):
 
 
 # ── Response schemas ───────────────────────────────────────────────────────────
+
 
 class BufferNoteResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -155,4 +222,5 @@ class SearchResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     """Generic success message."""
+
     message: str

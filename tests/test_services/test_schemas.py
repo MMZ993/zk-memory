@@ -3,6 +3,7 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
+from pydantic import ValidationError
 
 from app.models.schemas import (
     BufferNoteCreate,
@@ -27,6 +28,7 @@ def _now():
 
 
 # ── BufferNote ─────────────────────────────────────────────────────────────────
+
 
 def test_buffer_note_create_minimal():
     obj = BufferNoteCreate(content="hello")
@@ -57,6 +59,7 @@ def test_buffer_note_response_from_orm():
 
 # ── Note ──────────────────────────────────────────────────────────────────────
 
+
 def test_note_create_defaults():
     obj = NoteCreate(title="T", content="C")
     assert obj.tags == []
@@ -66,6 +69,11 @@ def test_note_create_defaults():
 def test_note_create_with_tags():
     obj = NoteCreate(title="T", content="C", tags=["a", "b"])
     assert obj.tags == ["a", "b"]
+
+
+def test_note_create_rejects_title_longer_than_db_constraint():
+    with pytest.raises(ValidationError, match="at most 255"):
+        NoteCreate(title="t" * 256, content="C")
 
 
 def test_note_update_all_optional():
@@ -133,6 +141,7 @@ def test_note_response_empty_tags():
 
 # ── Link ──────────────────────────────────────────────────────────────────────
 
+
 def test_link_create():
     obj = LinkCreate(source_id="a", target_id="b", relation_type="related_to")
     assert obj.relation_type == "related_to"
@@ -140,6 +149,7 @@ def test_link_create():
 
 
 # ── RelationType ──────────────────────────────────────────────────────────────
+
 
 def test_relation_type_create_defaults():
     obj = RelationTypeCreate(name="supports")
@@ -149,12 +159,22 @@ def test_relation_type_create_defaults():
 
 # ── Tag ───────────────────────────────────────────────────────────────────────
 
+
 def test_tag_create():
     obj = TagCreate(name="python")
     assert obj.name == "python"
 
 
+def test_tag_create_normalizes_and_rejects_empty():
+    obj = TagCreate(name=" AI ")
+    assert obj.name == "ai"
+
+    with pytest.raises(ValidationError, match="cannot be empty"):
+        TagCreate(name="   ")
+
+
 # ── Search ────────────────────────────────────────────────────────────────────
+
 
 def test_search_request_defaults():
     obj = SearchRequest(q="test query")
@@ -180,6 +200,7 @@ def test_search_response():
 
 
 # ── MessageResponse ───────────────────────────────────────────────────────────
+
 
 def test_message_response():
     resp = MessageResponse(message="deleted")

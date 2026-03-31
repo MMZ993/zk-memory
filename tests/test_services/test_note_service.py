@@ -2,6 +2,7 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock
 from qdrant_client.http.exceptions import ApiException
 from sqlalchemy.orm import sessionmaker
+from app.models.database import Tag
 import app.services.note_service as note_service
 from app.services.note_service import (
     NoteDeleteSyncError,
@@ -24,6 +25,18 @@ async def test_create_note(db):
     assert note.sync_last_success_at is not None
     assert note.sync_last_error is None
     assert note.title == "T"
+
+
+@pytest.mark.asyncio
+async def test_create_note_normalizes_and_dedupes_tags_case_insensitively(db):
+    note = await create_note(
+        db,
+        {"title": "T", "content": "C", "tags": [" AI ", "ai", "ML", " ml "]},
+    )
+
+    assert note.id is not None
+    tag_names = [tag.name for tag in db.query(Tag).order_by(Tag.name).all()]
+    assert tag_names == ["ai", "ml"]
 
 
 @pytest.mark.asyncio
@@ -53,6 +66,17 @@ async def test_update_note(db):
     assert updated.sync_last_attempt_at is not None
     assert updated.sync_last_success_at is not None
     assert updated.sync_last_error is None
+
+
+@pytest.mark.asyncio
+async def test_update_note_normalizes_and_dedupes_tags_case_insensitively(db):
+    note = await create_note(db, {"title": "Old", "content": "C", "tags": ["x"]})
+
+    updated = await update_note(db, note.id, {"tags": [" AI ", "ai", "ML", " ml "]})
+
+    assert updated is not None
+    tag_names = [tag.name for tag in db.query(Tag).order_by(Tag.name).all()]
+    assert tag_names == ["ai", "ml", "x"]
 
 
 @pytest.mark.asyncio

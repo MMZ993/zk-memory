@@ -2,6 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, pagination, require_read, require_write
@@ -38,6 +39,20 @@ from app.services.tag_service import (
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
 
+def _map_integrity_error(exc: Exception) -> HTTPException:
+    detail = str(exc.orig).lower() if exc.orig else str(exc).lower()
+    if "unique" in detail or "duplicate" in detail:
+        return HTTPException(status_code=409, detail="integrity conflict")
+    return HTTPException(status_code=422, detail="integrity validation failed")
+
+
+def _normalize_query_tags(tags: Optional[str]) -> Optional[list[str]]:
+    if not tags:
+        return None
+    normalized = [t.strip().lower() for t in tags.split(",") if t.strip()]
+    return normalized or None
+
+
 class NoteSearchResult(NoteResponse):
     score: float = 0.0
 
@@ -59,7 +74,7 @@ async def search_notes_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_read),
 ):
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    tag_list = _normalize_query_tags(tags)
 
     if search_type == "semantic":
         pairs = await search_semantic(db, q, limit=limit, tags=tag_list)
@@ -106,7 +121,10 @@ async def create_note_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_write),
 ):
-    return await create_note(db, note.model_dump(), background_tasks)
+    try:
+        return await create_note(db, note.model_dump(), background_tasks)
+    except (IntegrityError, DataError) as exc:
+        raise _map_integrity_error(exc) from exc
 
 
 @router.get("/", response_model=list[NoteResponse])
@@ -118,7 +136,7 @@ def list_notes_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_read),
 ):
-    tag_list = [t.strip() for t in tags.split(",")] if tags else None
+    tag_list = _normalize_query_tags(tags)
     return list_notes(db, tags=tag_list, sort=sort, order=order, **page)
 
 
@@ -140,9 +158,12 @@ async def update_note_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_write),
 ):
-    updated = await update_note(
-        db, note_id, note.model_dump(exclude_none=True), background_tasks
-    )
+    try:
+        updated = await update_note(
+            db, note_id, note.model_dump(exclude_none=True), background_tasks
+        )
+    except (IntegrityError, DataError) as exc:
+        raise _map_integrity_error(exc) from exc
     if not updated:
         raise HTTPException(status_code=404, detail="Note not found")
     return updated
@@ -211,7 +232,10 @@ def add_tag_endpoint(
 ):
     if not get_note(db, note_id):
         raise HTTPException(status_code=404, detail="Note not found")
-    return add_tag_to_note(db, note_id, body.name)
+    try:
+        return add_tag_to_note(db, note_id, body.name)
+    except (IntegrityError, DataError) as exc:
+        raise _map_integrity_error(exc) from exc
 
 
 @router.delete("/{note_id}/tags/{tag_id}", status_code=204)

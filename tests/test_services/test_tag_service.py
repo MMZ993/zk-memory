@@ -1,7 +1,14 @@
 import pytest
+from datetime import datetime, timezone
+import uuid
+from app.models.database import Tag
 from app.services.note_service import create_note
 from app.services.tag_service import (
-    create_tag, list_tags, get_note_tags, add_tag_to_note, remove_tag_from_note,
+    create_tag,
+    list_tags,
+    get_note_tags,
+    add_tag_to_note,
+    remove_tag_from_note,
 )
 
 
@@ -9,6 +16,51 @@ def test_create_tag_idempotent(db):
     t1 = create_tag(db, "python")
     t2 = create_tag(db, "python")
     assert t1.id == t2.id
+
+
+def test_create_tag_normalizes_whitespace_and_case(db):
+    t1 = create_tag(db, " AI ")
+    t2 = create_tag(db, "ai")
+    assert t1.id == t2.id
+    assert t1.name == "ai"
+
+
+def test_create_tag_reuses_legacy_mixed_case_rows(db):
+    legacy = Tag(
+        id=str(uuid.uuid4()),
+        name="AI",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(legacy)
+    db.commit()
+
+    tag = create_tag(db, "ai")
+
+    assert tag.id == legacy.id
+    assert tag.name == "ai"
+    assert db.query(Tag).count() == 1
+
+
+def test_create_tag_prefers_exact_lowercase_row_when_case_variants_exist(db):
+    upper = Tag(
+        id=str(uuid.uuid4()),
+        name="AI",
+        created_at=datetime.now(timezone.utc),
+    )
+    lower = Tag(
+        id=str(uuid.uuid4()),
+        name="ai",
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(upper)
+    db.add(lower)
+    db.commit()
+
+    tag = create_tag(db, "ai")
+
+    assert tag.id == lower.id
+    assert tag.name == "ai"
+    assert db.query(Tag).count() == 2
 
 
 def test_list_tags_with_count(db):
