@@ -44,10 +44,32 @@ async def reembed_endpoint(
             detail=f"confirm must be: '{REEMBED_CONFIRM_PHRASE}'",
         )
     from app.services.admin_service import _reembed_state
-    if _reembed_state["status"] == "in_progress":
+
+    if _reembed_state["status"] in {"queued", "in_progress"}:
         raise HTTPException(status_code=409, detail="Re-embed job already running")
     total = db.query(Note).count()
-    background_tasks.add_task(start_reembed, db)
+    _reembed_state.update(
+        {
+            "status": "queued",
+            "total": total,
+            "processed": 0,
+            "failed": 0,
+        }
+    )
+    try:
+        background_tasks.add_task(start_reembed)
+    except Exception as exc:
+        _reembed_state.update(
+            {
+                "status": "idle",
+                "total": 0,
+                "processed": 0,
+                "failed": 0,
+            }
+        )
+        raise HTTPException(
+            status_code=503, detail="Failed to schedule re-embed job"
+        ) from exc
     return {"status": "started", "total_notes": total}
 
 
@@ -63,5 +85,5 @@ async def sync_embeddings_endpoint(
     _: None = Depends(require_admin),
 ):
     pending = db.query(Note).filter(Note.synced == False).count()
-    background_tasks.add_task(sync_unsynced_notes, db)
+    background_tasks.add_task(sync_unsynced_notes)
     return {"status": "started", "pending_notes": pending}

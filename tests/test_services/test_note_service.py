@@ -176,3 +176,65 @@ async def test_embed_and_sync_by_note_id_logs_query_failures_with_retry_metadata
     assert kwargs["extra"]["retry_attempt"] == 1
     assert kwargs["extra"]["max_retries"] == 1
     fake_db.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_sync_unsynced_notes_uses_fresh_session_and_closes_it(monkeypatch):
+    fake_db = MagicMock()
+    session_factory = MagicMock(return_value=fake_db)
+    fake_db.query.return_value.filter.return_value.limit.return_value.all.return_value = []
+
+    monkeypatch.setattr(note_service, "SessionLocal", session_factory)
+
+    synced_count = await note_service.sync_unsynced_notes(limit=25)
+
+    assert synced_count == 0
+    session_factory.assert_called_once_with()
+    fake_db.query.assert_called_once_with(note_service.Note)
+    fake_db.commit.assert_called_once_with()
+    fake_db.close.assert_called_once_with()
+
+
+@pytest.mark.asyncio
+async def test_sync_unsynced_notes_logs_failure_with_retry_metadata(monkeypatch):
+    fake_db = MagicMock()
+    fake_note = MagicMock(id="note-789")
+    fake_db.query.return_value.filter.return_value.limit.return_value.all.return_value = [
+        fake_note
+    ]
+    mock_logger = MagicMock()
+
+    monkeypatch.setattr(note_service, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(note_service, "logger", mock_logger)
+    monkeypatch.setattr(
+        note_service,
+        "generate_embedding",
+        AsyncMock(side_effect=RuntimeError("embedding failed")),
+    )
+
+    await note_service.sync_unsynced_notes(limit=10)
+
+    mock_logger.exception.assert_called_once()
+    _, kwargs = mock_logger.exception.call_args
+    assert kwargs["extra"]["note_id"] == "note-789"
+    assert kwargs["extra"]["retry_attempt"] == 1
+    assert kwargs["extra"]["max_retries"] == 1
+
+
+@pytest.mark.asyncio
+async def test_sync_unsynced_notes_logs_and_returns_zero_when_session_creation_fails(
+    monkeypatch,
+):
+    mock_logger = MagicMock()
+
+    monkeypatch.setattr(
+        note_service,
+        "SessionLocal",
+        MagicMock(side_effect=RuntimeError("db unavailable")),
+    )
+    monkeypatch.setattr(note_service, "logger", mock_logger)
+
+    synced_count = await note_service.sync_unsynced_notes(limit=10)
+
+    assert synced_count == 0
+    mock_logger.exception.assert_called_once()

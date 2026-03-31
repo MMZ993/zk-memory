@@ -1,15 +1,16 @@
 # Session Plan — 2026-03-31
 
 ## Goal
-Implement safe async task boundaries for note embedding jobs so background execution never uses request-scoped DB sessions/ORM objects.
+Refactor admin async jobs to use safe task boundaries with fresh DB sessions and no request-scoped session leakage.
 
 ## Tasks
-- [x] Add failing tests that prove async note embedding paths pass primitive IDs/payloads only and create fresh DB sessions in task execution (td:td-0717d4)
-- [x] Refactor note async embedding scheduling/execution to remove request-scoped session/ORM leakage and use task-safe inputs (td:td-0717d4)
-- [x] Add/adjust structured failure logging and retry metadata assertions for the async note embedding path (td:td-0717d4)
-- [x] Run targeted and relevant full tests, then resolve regressions (td:td-0717d4)
+- [x] Add/adjust tests for admin async job paths to assert task-safe inputs and fresh-session execution boundaries (td:td-5266e0)
+- [x] Refactor admin async scheduling/execution to pass primitive IDs/payloads only and create DB sessions inside worker execution (td:td-5266e0)
+- [x] Add structured error logging and retry metadata handling for admin async failures where applicable (td:td-5266e0)
+- [x] Run relevant test suites and resolve regressions for admin async job changes (td:td-5266e0)
 
 ## Notes
-- Carry-over target from HANDOFF is `td-0717d4` and this session is scoped only to that item.
-- `bd` sync is currently blocked in this environment (Dolt missing/unreachable), so issue status could not be updated from this shell.
-- TDD order remains strict: tests first, then implementation, then verification.
+- Verification complete: two PRD-aligned items are now closed in `td` (`td-1e0c4f`, `td-0717d4`).
+- `td-5266e0` is now marked `in_progress` for this session.
+- Follow project rule: no request-scoped `Session`/ORM objects in background tasks; use IDs + fresh sessions.
+- Reliability approach for this project remains intentionally simple: single-process writer assumptions (overnight admin/write jobs), no distributed lock coordination, avoid additional moving parts.

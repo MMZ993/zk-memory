@@ -1,13 +1,16 @@
 from datetime import datetime, timedelta, timezone
+import logging
 
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.qdrant import QDRANT_COLLECTION, client, init_qdrant
+from app.db.session import SessionLocal
 from app.models.database import BufferNote, Link, Note, NoteTag, Tag
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 # In-process reembed state — single-worker only
 _reembed_state: dict = {"status": "idle", "total": 0, "processed": 0, "failed": 0}
@@ -41,12 +44,12 @@ def get_stats(db: Session) -> dict:
             "total": db.query(Note).count(),
             "synced": db.query(Note).filter(Note.synced == True).count(),
             "unsynced": db.query(Note).filter(Note.synced == False).count(),
-            "created_today": db.query(Note).filter(
-                Note.created_at >= today_start, Note.created_at < tomorrow_start
-            ).count(),
-            "updated_today": db.query(Note).filter(
-                Note.updated_at >= today_start, Note.updated_at < tomorrow_start
-            ).count(),
+            "created_today": db.query(Note)
+            .filter(Note.created_at >= today_start, Note.created_at < tomorrow_start)
+            .count(),
+            "updated_today": db.query(Note)
+            .filter(Note.updated_at >= today_start, Note.updated_at < tomorrow_start)
+            .count(),
         },
         "links": {"total": db.query(Link).count()},
         "tags": {
@@ -55,8 +58,12 @@ def get_stats(db: Session) -> dict:
         },
         "buffer": {
             "total": db.query(BufferNote).count(),
-            "unprocessed": db.query(BufferNote).filter(BufferNote.processed == False).count(),
-            "processed": db.query(BufferNote).filter(BufferNote.processed == True).count(),
+            "unprocessed": db.query(BufferNote)
+            .filter(BufferNote.processed == False)
+            .count(),
+            "processed": db.query(BufferNote)
+            .filter(BufferNote.processed == True)
+            .count(),
         },
         "vector_db": vector_db,
     }
@@ -78,32 +85,59 @@ def get_reembed_status() -> dict:
     return {"status": _reembed_state["status"]}
 
 
-async def start_reembed(db: Session) -> None:
+async def start_reembed() -> None:
     """Background task: purge Qdrant collection and regenerate all embeddings."""
     from app.services.embedding_service import generate_embedding, upsert_embedding
     from app.services.note_service import _build_qdrant_payload, _get_tag_names
 
-    notes = db.query(Note).all()
-    _reembed_state.update({
-        "status": "in_progress",
-        "total": len(notes),
-        "processed": 0,
-        "failed": 0,
-    })
+    db = None
+    try:
+        db = SessionLocal()
+        notes = db.query(Note).all()
+        _reembed_state.update(
+            {
+                "status": "in_progress",
+                "total": len(notes),
+                "processed": 0,
+                "failed": 0,
+            }
+        )
 
-    client.delete_collection(QDRANT_COLLECTION)
-    init_qdrant()
+        client.delete_collection(QDRANT_COLLECTION)
+        init_qdrant()
 
-    for note in notes:
-        try:
-            tags = _get_tag_names(db, note.id)
-            vector = await generate_embedding(note.title + " " + note.content)
-            await upsert_embedding(note.id, vector, _build_qdrant_payload(note, tags))
-            note.synced = True
-            _reembed_state["processed"] += 1
-        except Exception:
-            note.synced = False
-            _reembed_state["failed"] += 1
+        for note in notes:
+            try:
+                tags = _get_tag_names(db, note.id)
+                vector = await generate_embedding(note.title + " " + note.content)
+                await upsert_embedding(
+                    note.id, vector, _build_qdrant_payload(note, tags)
+                )
+                note.synced = True
+                _reembed_state["processed"] += 1
+            except Exception:
+                note.synced = False
+                _reembed_state["failed"] += 1
+                logger.exception(
+                    "Async admin re-embed failed",
+                    extra={
+                        "note_id": note.id,
+                        "retry_attempt": 1,
+                        "max_retries": 1,
+                    },
+                )
 
-    db.commit()
-    _reembed_state["status"] = "finished"
+        db.commit()
+        _reembed_state["status"] = "finished"
+    except Exception:
+        _reembed_state["status"] = "failed"
+        logger.exception(
+            "Async admin re-embed job failed",
+            extra={
+                "retry_attempt": 1,
+                "max_retries": 1,
+            },
+        )
+    finally:
+        if db is not None:
+            db.close()

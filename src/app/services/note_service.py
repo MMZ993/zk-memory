@@ -212,23 +212,45 @@ def delete_note(db: Session, note_id: str) -> bool:
     return True
 
 
-async def sync_unsynced_notes(db: Session, limit: int = 100) -> int:
+async def sync_unsynced_notes(limit: int = 100) -> int:
     """Repair job: sync all notes where synced=False."""
-    unsynced = db.query(Note).filter(Note.synced == False).limit(limit).all()
-    for note in unsynced:
-        try:
-            tags = _get_tag_names(db, note.id)
-            embedding = await generate_embedding(
-                _build_embedding_text(note, tags), task="document"
-            )
-            await upsert_embedding(
-                note_id=note.id,
-                vector=embedding,
-                payload=_build_qdrant_payload(note, tags),
-            )
-            note.synced = True
-        except Exception as e:
-            print(f"Failed to sync note {note.id}: {e}")
+    db = None
+    try:
+        db = SessionLocal()
+        unsynced = db.query(Note).filter(Note.synced == False).limit(limit).all()
+        for note in unsynced:
+            try:
+                tags = _get_tag_names(db, note.id)
+                embedding = await generate_embedding(
+                    _build_embedding_text(note, tags), task="document"
+                )
+                await upsert_embedding(
+                    note_id=note.id,
+                    vector=embedding,
+                    payload=_build_qdrant_payload(note, tags),
+                )
+                note.synced = True
+            except Exception:
+                logger.exception(
+                    "Async unsynced note repair failed",
+                    extra={
+                        "note_id": note.id,
+                        "retry_attempt": 1,
+                        "max_retries": 1,
+                    },
+                )
 
-    db.commit()
-    return len(unsynced)
+        db.commit()
+        return len(unsynced)
+    except Exception:
+        logger.exception(
+            "Async unsynced note repair job failed",
+            extra={
+                "retry_attempt": 1,
+                "max_retries": 1,
+            },
+        )
+        return 0
+    finally:
+        if db is not None:
+            db.close()
