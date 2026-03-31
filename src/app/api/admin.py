@@ -58,7 +58,7 @@ async def reembed_endpoint(
     )
     try:
         background_tasks.add_task(start_reembed)
-    except Exception as exc:
+    except RuntimeError as exc:
         _reembed_state.update(
             {
                 "status": "idle",
@@ -70,6 +70,16 @@ async def reembed_endpoint(
         raise HTTPException(
             status_code=503, detail="Failed to schedule re-embed job"
         ) from exc
+    except Exception:
+        _reembed_state.update(
+            {
+                "status": "idle",
+                "total": 0,
+                "processed": 0,
+                "failed": 0,
+            }
+        )
+        raise
     return {"status": "started", "total_notes": total}
 
 

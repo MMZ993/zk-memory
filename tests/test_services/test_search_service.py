@@ -1,13 +1,39 @@
 import pytest
+from unittest.mock import MagicMock
+import app.services.search_service as search_service
 from app.services.note_service import create_note
 from app.services.link_service import create_link
 from app.services.search_service import search_keyword, search_graph
+from sqlalchemy.exc import SQLAlchemyError
 
 
 def test_search_keyword_no_fts_table(db):
     # In-memory SQLite from conftest doesn't have FTS5 table — should return [] not error
     results = search_keyword(db, "anything")
     assert results == []
+
+
+def test_search_keyword_raises_unexpected_errors(db, monkeypatch):
+    def raise_unexpected(*args, **kwargs):
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.setattr(db, "execute", raise_unexpected)
+
+    with pytest.raises(RuntimeError, match="unexpected failure"):
+        search_keyword(db, "anything")
+
+
+def test_search_keyword_logs_and_falls_back_on_sqlalchemy_error(db, monkeypatch):
+    mock_logger = MagicMock()
+
+    def raise_sqlalchemy_error(*args, **kwargs):
+        raise SQLAlchemyError("db failure")
+
+    monkeypatch.setattr(search_service, "logger", mock_logger, raising=False)
+    monkeypatch.setattr(db, "execute", raise_sqlalchemy_error)
+
+    assert search_keyword(db, "anything") == []
+    mock_logger.warning.assert_called_once()
 
 
 @pytest.mark.asyncio

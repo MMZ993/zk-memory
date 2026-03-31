@@ -1,10 +1,14 @@
+import logging
+
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.database import Note, Link
 from app.services.embedding_service import generate_embedding, search_embeddings
 
 MAX_GRAPH_DEPTH = 3
+logger = logging.getLogger(__name__)
 
 
 async def search_semantic(
@@ -31,6 +35,7 @@ def search_keyword(
     """Full-text search. SQLite uses FTS5; PostgreSQL uses tsvector."""
     from sqlalchemy import text
     from app.core.config import get_settings
+
     settings = get_settings()
 
     try:
@@ -57,13 +62,19 @@ def search_keyword(
             rows = db.execute(sql, {"q": f'"{safe_query}"', "limit": limit}).fetchall()
             note_ids = [r[0] for r in rows]
             scores = {nid: 1.0 for nid in note_ids}
-    except Exception:
+    except SQLAlchemyError:
+        logger.warning(
+            "Keyword search fallback to empty results",
+            extra={"query": query, "limit": limit},
+        )
         return []
 
     if not note_ids:
         return []
     notes_map = {n.id: n for n in db.query(Note).filter(Note.id.in_(note_ids)).all()}
-    return [(notes_map[nid], scores.get(nid, 1.0)) for nid in note_ids if nid in notes_map]
+    return [
+        (notes_map[nid], scores.get(nid, 1.0)) for nid in note_ids if nid in notes_map
+    ]
 
 
 async def search_hybrid(
@@ -101,11 +112,15 @@ def search_graph(
             break
         next_layer: set[str] = set()
         for note_id in current_layer:
-            links = db.query(Link).filter(
-                or_(Link.source_id == note_id, Link.target_id == note_id)
-            ).all()
+            links = (
+                db.query(Link)
+                .filter(or_(Link.source_id == note_id, Link.target_id == note_id))
+                .all()
+            )
             for link in links:
-                neighbor = link.target_id if link.source_id == note_id else link.source_id
+                neighbor = (
+                    link.target_id if link.source_id == note_id else link.source_id
+                )
                 if neighbor not in visited:
                     next_layer.add(neighbor)
                     visited.add(neighbor)

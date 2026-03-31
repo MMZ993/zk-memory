@@ -259,7 +259,14 @@ def delete_note(db: Session, note_id: str) -> bool:
             collection_name=QDRANT_COLLECTION,
             points_selector=PointIdsList(points=[note_id]),
         )
-    except Exception:
+    except (
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        ApiException,
+        ResponseHandlingException,
+    ):
         logger.exception(
             "Note delete vector cleanup failed",
             extra={"note_id": note_id},

@@ -1,3 +1,4 @@
+import pytest
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -95,6 +96,24 @@ def test_reembed_endpoint_rolls_back_queued_state_when_enqueue_fails(
     )
 
     assert r.status_code == 503
+    assert _reembed_state["status"] == "idle"
+
+
+def test_reembed_endpoint_reraises_unexpected_enqueue_errors(client, monkeypatch):
+    _reembed_state.update({"status": "idle", "total": 0, "processed": 0, "failed": 0})
+
+    def _raise_add_task(self, func, *args, **kwargs):
+        raise ValueError("unexpected enqueue error")
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
+
+    with pytest.raises(ValueError, match="unexpected enqueue error"):
+        client.post(
+            "/api/admin/reembed",
+            json={
+                "confirm": "I understand this will delete and regenerate all embeddings",
+            },
+        )
     assert _reembed_state["status"] == "idle"
 
 

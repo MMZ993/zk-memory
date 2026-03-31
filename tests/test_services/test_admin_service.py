@@ -5,6 +5,32 @@ from unittest.mock import AsyncMock, MagicMock
 import app.services.admin_service as admin_service
 
 
+def test_get_stats_reraises_unexpected_vector_db_errors(db, monkeypatch):
+    monkeypatch.setattr(
+        admin_service.client,
+        "get_collection",
+        MagicMock(side_effect=RuntimeError("unexpected vector db failure")),
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected vector db failure"):
+        admin_service.get_stats(db)
+
+
+def test_get_stats_logs_and_falls_back_on_qdrant_transport_error(db, monkeypatch):
+    mock_logger = MagicMock()
+    monkeypatch.setattr(admin_service, "logger", mock_logger, raising=False)
+    monkeypatch.setattr(
+        admin_service.client,
+        "get_collection",
+        MagicMock(side_effect=ApiException()),
+    )
+
+    stats = admin_service.get_stats(db)
+
+    assert stats["vector_db"] == {"points_count": 0, "segments_count": 0}
+    mock_logger.warning.assert_called_once()
+
+
 @pytest.mark.asyncio
 async def test_start_reembed_logs_failure_with_retry_metadata(monkeypatch):
     fake_db = MagicMock()

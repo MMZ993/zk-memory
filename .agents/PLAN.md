@@ -1,13 +1,13 @@
 # Session Plan — 2026-03-31
 
 ## Goal
-Implement bounded retry/backoff for embedding and Qdrant failures with durable failure metadata aligned to sync-state behavior.
+Replace broad exception swallowing in hot paths with targeted handling and structured logging.
 
 ## Tasks
-- [x] Define retry/backoff boundaries for transient embedding and vector upsert failures, including terminal-failure conditions (td:td-37fc85)
-- [x] Implement retry execution path and persist attempt/error metadata for recoverability without silent failure (td:td-37fc85)
-- [x] Add focused test coverage for retry success/failure paths and metadata persistence expectations (td:td-37fc85)
+- [x] Identify broad `except Exception` blocks in API/service hot paths and classify expected failure types (td:td-7b906c)
+- [x] Implement targeted exception handling with structured logging while preserving current API contracts (td:td-7b906c)
+- [x] Validate updated error-handling behavior with focused tests and local verification commands (td:td-7b906c)
 
 ## Notes
-- Scope for this session is limited to `td-37fc85`.
-- Build on previously completed durable sync-state foundation from `td-9c0794`.
+- Session scope is limited to `td-7b906c`.
+- Follow-on hardening tasks from handoff remain queued for later sessions.

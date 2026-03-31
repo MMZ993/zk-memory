@@ -73,9 +73,19 @@ async def test_delete_note_raises_and_keeps_row_when_qdrant_delete_fails(
     db, mock_qdrant
 ):
     note = await create_note(db, {"title": "Del", "content": "C"})
-    mock_qdrant.delete.side_effect = RuntimeError("qdrant down")
+    mock_qdrant.delete.side_effect = ApiException()
 
     with pytest.raises(NoteDeleteSyncError):
+        delete_note(db, note.id)
+    assert get_note(db, note.id) is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_note_reraises_unexpected_delete_errors(db, mock_qdrant):
+    note = await create_note(db, {"title": "Del", "content": "C"})
+    mock_qdrant.delete.side_effect = ValueError("unexpected delete failure")
+
+    with pytest.raises(ValueError, match="unexpected delete failure"):
         delete_note(db, note.id)
     assert get_note(db, note.id) is not None
 

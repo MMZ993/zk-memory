@@ -63,7 +63,17 @@ def get_stats(db: Session) -> dict:
             "points_count": qdrant_info.points_count,
             "segments_count": qdrant_info.segments_count,
         }
-    except Exception:
+    except (
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        ApiException,
+        ResponseHandlingException,
+    ) as exc:
+        logger.warning(
+            "Stats endpoint vector backend fallback",
+            extra={"error": str(exc)},
+        )
         vector_db = {"points_count": 0, "segments_count": 0}
 
     return {
