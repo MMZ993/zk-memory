@@ -1,6 +1,9 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 import logging
 
+import httpx
+from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
@@ -11,9 +14,33 @@ from app.models.database import BufferNote, Link, Note, NoteTag, Tag
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+ADMIN_REEMBED_MAX_RETRIES = 2
+ADMIN_REEMBED_RETRY_BASE_DELAY_SECONDS = 0.1
 
 # In-process reembed state — single-worker only
 _reembed_state: dict = {"status": "idle", "total": 0, "processed": 0, "failed": 0}
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _is_retryable_reembed_error(exc: Exception) -> bool:
+    return isinstance(
+        exc,
+        (
+            RuntimeError,
+            ConnectionError,
+            TimeoutError,
+            httpx.HTTPError,
+            ApiException,
+            ResponseHandlingException,
+        ),
+    )
+
+
+def _compute_reembed_retry_delay(attempt: int) -> float:
+    return ADMIN_REEMBED_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
 
 
 def get_stats(db: Session) -> dict:
@@ -107,25 +134,44 @@ async def start_reembed() -> None:
         init_qdrant()
 
         for note in notes:
-            try:
-                tags = _get_tag_names(db, note.id)
-                vector = await generate_embedding(note.title + " " + note.content)
-                await upsert_embedding(
-                    note.id, vector, _build_qdrant_payload(note, tags)
-                )
-                note.synced = True
-                _reembed_state["processed"] += 1
-            except Exception:
-                note.synced = False
-                _reembed_state["failed"] += 1
-                logger.exception(
-                    "Async admin re-embed failed",
-                    extra={
-                        "note_id": note.id,
-                        "retry_attempt": 1,
-                        "max_retries": 1,
-                    },
-                )
+            for attempt in range(1, ADMIN_REEMBED_MAX_RETRIES + 1):
+                note.sync_attempts += 1
+                note.sync_last_attempt_at = _now()
+                note.sync_status = "syncing"
+                db.commit()
+                try:
+                    tags = _get_tag_names(db, note.id)
+                    vector = await generate_embedding(note.title + " " + note.content)
+                    await upsert_embedding(
+                        note.id, vector, _build_qdrant_payload(note, tags)
+                    )
+                    note.synced = True
+                    note.sync_status = "synced"
+                    note.sync_last_success_at = _now()
+                    note.sync_last_error = None
+                    _reembed_state["processed"] += 1
+                    db.commit()
+                    break
+                except Exception as exc:
+                    note.synced = False
+                    note.sync_status = "failed"
+                    note.sync_last_error = str(exc)
+                    db.commit()
+                    if (
+                        attempt >= ADMIN_REEMBED_MAX_RETRIES
+                        or not _is_retryable_reembed_error(exc)
+                    ):
+                        _reembed_state["failed"] += 1
+                        logger.exception(
+                            "Async admin re-embed failed",
+                            extra={
+                                "note_id": note.id,
+                                "retry_attempt": attempt,
+                                "max_retries": ADMIN_REEMBED_MAX_RETRIES,
+                            },
+                        )
+                        break
+                    await asyncio.sleep(_compute_reembed_retry_delay(attempt))
 
         db.commit()
         _reembed_state["status"] = "finished"
@@ -135,7 +181,7 @@ async def start_reembed() -> None:
             "Async admin re-embed job failed",
             extra={
                 "retry_attempt": 1,
-                "max_retries": 1,
+                "max_retries": ADMIN_REEMBED_MAX_RETRIES,
             },
         )
     finally:

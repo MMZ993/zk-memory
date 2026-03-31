@@ -1,5 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+from qdrant_client.http.exceptions import ApiException
 from sqlalchemy.orm import sessionmaker
 import app.services.note_service as note_service
 from app.services.note_service import (
@@ -154,8 +155,8 @@ async def test_embed_and_sync_by_note_id_logs_failure_with_retry_metadata(
     mock_logger.exception.assert_called_once()
     _, kwargs = mock_logger.exception.call_args
     assert kwargs["extra"]["note_id"] == note_id
-    assert kwargs["extra"]["retry_attempt"] == 1
-    assert kwargs["extra"]["max_retries"] == 1
+    assert kwargs["extra"]["retry_attempt"] == 2
+    assert kwargs["extra"]["max_retries"] == 2
 
 
 @pytest.mark.asyncio
@@ -182,7 +183,7 @@ async def test_embed_and_sync_by_note_id_persists_failed_sync_state(db, monkeypa
     refreshed_note = get_note(verify_db, note.id)
     assert refreshed_note.synced is False
     assert refreshed_note.sync_status == "failed"
-    assert refreshed_note.sync_attempts == 2
+    assert refreshed_note.sync_attempts == 3
     assert refreshed_note.sync_last_attempt_at is not None
     assert refreshed_note.sync_last_success_at is not None
     assert refreshed_note.sync_last_error == "embedding failed"
@@ -230,7 +231,7 @@ async def test_embed_and_sync_by_note_id_logs_query_failures_with_retry_metadata
     _, kwargs = mock_logger.exception.call_args
     assert kwargs["extra"]["note_id"] == "note-456"
     assert kwargs["extra"]["retry_attempt"] == 1
-    assert kwargs["extra"]["max_retries"] == 1
+    assert kwargs["extra"]["max_retries"] == 2
     fake_db.close.assert_called_once_with()
 
 
@@ -252,15 +253,21 @@ async def test_sync_unsynced_notes_uses_fresh_session_and_closes_it(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_sync_unsynced_notes_logs_failure_with_retry_metadata(monkeypatch):
-    fake_db = MagicMock()
-    fake_note = MagicMock(id="note-789")
-    fake_db.query.return_value.filter.return_value.limit.return_value.all.return_value = [
-        fake_note
-    ]
+async def test_sync_unsynced_notes_logs_failure_with_retry_metadata(db, monkeypatch):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
     mock_logger = MagicMock()
 
-    monkeypatch.setattr(note_service, "SessionLocal", lambda: fake_db)
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
     monkeypatch.setattr(note_service, "logger", mock_logger)
     monkeypatch.setattr(
         note_service,
@@ -272,9 +279,9 @@ async def test_sync_unsynced_notes_logs_failure_with_retry_metadata(monkeypatch)
 
     mock_logger.exception.assert_called_once()
     _, kwargs = mock_logger.exception.call_args
-    assert kwargs["extra"]["note_id"] == "note-789"
-    assert kwargs["extra"]["retry_attempt"] == 1
-    assert kwargs["extra"]["max_retries"] == 1
+    assert kwargs["extra"]["note_id"] == note.id
+    assert kwargs["extra"]["retry_attempt"] == 2
+    assert kwargs["extra"]["max_retries"] == 2
 
 
 @pytest.mark.asyncio
@@ -312,7 +319,11 @@ async def test_sync_unsynced_notes_counts_only_successes_and_recovers_state(
         bind=db.get_bind(),
     )
     generate_mock = AsyncMock(
-        side_effect=[RuntimeError("embedding failed"), [0.1] * 768]
+        side_effect=[
+            RuntimeError("embedding failed"),
+            RuntimeError("embedding failed again"),
+            [0.1] * 768,
+        ]
     )
     monkeypatch.setattr(note_service, "SessionLocal", testing_session)
     monkeypatch.setattr(note_service, "generate_embedding", generate_mock)
@@ -323,7 +334,7 @@ async def test_sync_unsynced_notes_counts_only_successes_and_recovers_state(
     assert first_count == 0
     assert first_state.synced is False
     assert first_state.sync_status == "failed"
-    assert first_state.sync_last_error == "embedding failed"
+    assert first_state.sync_last_error == "embedding failed again"
     verify_db.close()
 
     second_count = await note_service.sync_unsynced_notes(limit=10)
@@ -333,5 +344,134 @@ async def test_sync_unsynced_notes_counts_only_successes_and_recovers_state(
     assert second_state.synced is True
     assert second_state.sync_status == "synced"
     assert second_state.sync_last_error is None
-    assert second_state.sync_attempts == 3
+    assert second_state.sync_attempts == 4
+    verify_db.close()
+
+
+@pytest.mark.asyncio
+async def test_embed_and_sync_by_note_id_retries_transient_embedding_failure(
+    db, monkeypatch
+):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    generate_mock = AsyncMock(
+        side_effect=[RuntimeError("transient embedding failure"), [0.1] * 768]
+    )
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
+    monkeypatch.setattr(note_service, "generate_embedding", generate_mock)
+
+    await note_service._embed_and_sync_by_note_id(note.id, ["x"])
+
+    verify_db = testing_session()
+    refreshed_note = get_note(verify_db, note.id)
+    assert generate_mock.await_count == 2
+    assert refreshed_note.synced is True
+    assert refreshed_note.sync_status == "synced"
+    assert refreshed_note.sync_last_error is None
+    assert refreshed_note.sync_attempts == 3
+    verify_db.close()
+
+
+@pytest.mark.asyncio
+async def test_embed_and_sync_by_note_id_retries_transient_upsert_failure(
+    db, monkeypatch
+):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    upsert_mock = AsyncMock(
+        side_effect=[RuntimeError("transient upsert failure"), None]
+    )
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
+    monkeypatch.setattr(note_service, "upsert_embedding", upsert_mock)
+
+    await note_service._embed_and_sync_by_note_id(note.id, ["x"])
+
+    verify_db = testing_session()
+    refreshed_note = get_note(verify_db, note.id)
+    assert upsert_mock.await_count == 2
+    assert refreshed_note.synced is True
+    assert refreshed_note.sync_status == "synced"
+    assert refreshed_note.sync_last_error is None
+    assert refreshed_note.sync_attempts == 3
+    verify_db.close()
+
+
+@pytest.mark.asyncio
+async def test_embed_and_sync_by_note_id_does_not_retry_non_retryable_error(
+    db, monkeypatch
+):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    generate_mock = AsyncMock(side_effect=ValueError("invalid embedding input"))
+    mock_logger = MagicMock()
+
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
+    monkeypatch.setattr(note_service, "generate_embedding", generate_mock)
+    monkeypatch.setattr(note_service, "logger", mock_logger)
+
+    await note_service._embed_and_sync_by_note_id(note.id, ["x"])
+
+    verify_db = testing_session()
+    refreshed_note = get_note(verify_db, note.id)
+    assert generate_mock.await_count == 1
+    assert refreshed_note.synced is False
+    assert refreshed_note.sync_status == "failed"
+    assert refreshed_note.sync_last_error == "invalid embedding input"
+    assert refreshed_note.sync_attempts == 2
+    _, kwargs = mock_logger.exception.call_args
+    assert kwargs["extra"]["retry_attempt"] == 1
+    assert kwargs["extra"]["max_retries"] == 2
+    verify_db.close()
+
+
+@pytest.mark.asyncio
+async def test_embed_and_sync_by_note_id_retries_qdrant_api_exception(db, monkeypatch):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    upsert_mock = AsyncMock(side_effect=[ApiException(), None])
+
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
+    monkeypatch.setattr(note_service, "upsert_embedding", upsert_mock)
+
+    await note_service._embed_and_sync_by_note_id(note.id, ["x"])
+
+    verify_db = testing_session()
+    refreshed_note = get_note(verify_db, note.id)
+    assert upsert_mock.await_count == 2
+    assert refreshed_note.synced is True
+    assert refreshed_note.sync_status == "synced"
+    assert refreshed_note.sync_last_error is None
+    assert refreshed_note.sync_attempts == 3
     verify_db.close()

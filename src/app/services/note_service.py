@@ -1,8 +1,11 @@
+import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 import logging
 import uuid
 
+import httpx
+from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
@@ -20,10 +23,30 @@ from app.core.config import get_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+SYNC_MAX_RETRIES = 2
+SYNC_RETRY_BASE_DELAY_SECONDS = 0.1
 
 
 class NoteDeleteSyncError(Exception):
     pass
+
+
+def _is_retryable_sync_error(exc: Exception) -> bool:
+    return isinstance(
+        exc,
+        (
+            RuntimeError,
+            ConnectionError,
+            TimeoutError,
+            httpx.HTTPError,
+            ApiException,
+            ResponseHandlingException,
+        ),
+    )
+
+
+def _compute_sync_retry_delay(attempt: int) -> float:
+    return SYNC_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
 
 
 # ── Tag helpers ───────────────────────────────────────────────────────────────
@@ -80,30 +103,36 @@ def _build_embedding_text(note: Note, tags: list[str]) -> str:
 
 async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
     """Generate embedding and mark note as synced."""
-    note.sync_attempts += 1
-    note.sync_last_attempt_at = _now()
-    note.sync_status = "syncing"
-    db.commit()
-    try:
-        embedding = await generate_embedding(
-            _build_embedding_text(note, tags), task="document"
-        )
-        await upsert_embedding(
-            note_id=note.id,
-            vector=embedding,
-            payload=_build_qdrant_payload(note, tags),
-        )
-        note.synced = True
-        note.sync_status = "synced"
-        note.sync_last_success_at = _now()
-        note.sync_last_error = None
+    for attempt in range(1, SYNC_MAX_RETRIES + 1):
+        note.sync_attempts += 1
+        note.sync_last_attempt_at = _now()
+        note.sync_status = "syncing"
         db.commit()
-    except Exception as exc:
-        note.synced = False
-        note.sync_status = "failed"
-        note.sync_last_error = str(exc)
-        db.commit()
-        raise
+        try:
+            embedding = await generate_embedding(
+                _build_embedding_text(note, tags), task="document"
+            )
+            await upsert_embedding(
+                note_id=note.id,
+                vector=embedding,
+                payload=_build_qdrant_payload(note, tags),
+            )
+            note.synced = True
+            note.sync_status = "synced"
+            note.sync_last_success_at = _now()
+            note.sync_last_error = None
+            db.commit()
+            return
+        except Exception as exc:
+            note.synced = False
+            note.sync_status = "failed"
+            note.sync_last_error = str(exc)
+            db.commit()
+            if attempt >= SYNC_MAX_RETRIES or not _is_retryable_sync_error(exc):
+                setattr(exc, "sync_retry_attempt", attempt)
+                setattr(exc, "sync_max_retries", SYNC_MAX_RETRIES)
+                raise
+            await asyncio.sleep(_compute_sync_retry_delay(attempt))
 
 
 async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
@@ -113,13 +142,15 @@ async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
         if not note:
             return
         await _embed_and_sync(db, note, tags)
-    except Exception:
+    except Exception as exc:
+        retry_attempt = getattr(exc, "sync_retry_attempt", 1)
+        max_retries = getattr(exc, "sync_max_retries", SYNC_MAX_RETRIES)
         logger.exception(
             "Async note embedding sync failed",
             extra={
                 "note_id": note_id,
-                "retry_attempt": 1,
-                "max_retries": 1,
+                "retry_attempt": retry_attempt,
+                "max_retries": max_retries,
             },
         )
     finally:
@@ -253,36 +284,18 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
         synced_count = 0
         for note in unsynced:
             try:
-                note.sync_attempts += 1
-                note.sync_last_attempt_at = _now()
-                note.sync_status = "syncing"
-                db.commit()
                 tags = _get_tag_names(db, note.id)
-                embedding = await generate_embedding(
-                    _build_embedding_text(note, tags), task="document"
-                )
-                await upsert_embedding(
-                    note_id=note.id,
-                    vector=embedding,
-                    payload=_build_qdrant_payload(note, tags),
-                )
-                note.synced = True
-                note.sync_status = "synced"
-                note.sync_last_success_at = _now()
-                note.sync_last_error = None
+                await _embed_and_sync(db, note, tags)
                 synced_count += 1
-                db.commit()
             except Exception as exc:
-                note.synced = False
-                note.sync_status = "failed"
-                note.sync_last_error = str(exc)
-                db.commit()
                 logger.exception(
                     "Async unsynced note repair failed",
                     extra={
                         "note_id": note.id,
-                        "retry_attempt": 1,
-                        "max_retries": 1,
+                        "retry_attempt": getattr(exc, "sync_retry_attempt", 1),
+                        "max_retries": getattr(
+                            exc, "sync_max_retries", SYNC_MAX_RETRIES
+                        ),
                     },
                 )
         db.commit()
@@ -292,7 +305,7 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
             "Async unsynced note repair job failed",
             extra={
                 "retry_attempt": 1,
-                "max_retries": 1,
+                "max_retries": SYNC_MAX_RETRIES,
             },
         )
         return 0

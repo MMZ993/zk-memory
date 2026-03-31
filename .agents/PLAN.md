@@ -1,13 +1,13 @@
 # Session Plan — 2026-03-31
 
 ## Goal
-Implement durable sync-state persistence for SQL↔Qdrant workflows and leave it in a verifiable, migration-backed state.
+Implement bounded retry/backoff for embedding and Qdrant failures with durable failure metadata aligned to sync-state behavior.
 
 ## Tasks
-- [x] Add persisted sync-state fields/model wiring and migration for per-note sync attempts/status/error metadata (td:td-9c0794)
-- [x] Refactor sync/update/delete flows to read/write durable sync-state consistently without silent drift (td:td-9c0794)
-- [x] Add or update focused tests for sync-state persistence and recovery behavior across restarts/failures (td:td-9c0794)
+- [x] Define retry/backoff boundaries for transient embedding and vector upsert failures, including terminal-failure conditions (td:td-37fc85)
+- [x] Implement retry execution path and persist attempt/error metadata for recoverability without silent failure (td:td-37fc85)
+- [x] Add focused test coverage for retry success/failure paths and metadata persistence expectations (td:td-37fc85)
 
 ## Notes
-- Session scope confirmed: `td-9c0794` only.
-- Keep implementation aligned with project’s simple reliability model (single-process assumptions, minimal moving parts).
+- Scope for this session is limited to `td-37fc85`.
+- Build on previously completed durable sync-state foundation from `td-9c0794`.
