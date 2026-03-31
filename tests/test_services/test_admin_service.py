@@ -357,3 +357,34 @@ async def test_start_reembed_retries_qdrant_api_exception(monkeypatch):
     assert fake_note.sync_attempts == 2
     assert fake_note.sync_status == "synced"
     assert fake_note.sync_last_error is None
+
+
+@pytest.mark.asyncio
+async def test_start_reembed_builds_embedding_text_with_tags(monkeypatch):
+    fake_db = MagicMock()
+    fake_note = MagicMock(id="note-tags", title="T", content="C", synced=False)
+    fake_db.query.return_value.all.return_value = [fake_note]
+    admin_service._reembed_state.update(
+        {"status": "queued", "total": 1, "processed": 0, "failed": 0}
+    )
+
+    generate_mock = AsyncMock(return_value=[0.1, 0.2])
+
+    monkeypatch.setattr(admin_service, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(admin_service.client, "delete_collection", lambda _: None)
+    monkeypatch.setattr(admin_service, "init_qdrant", lambda: None)
+    monkeypatch.setattr(
+        "app.services.note_service._get_tag_names",
+        MagicMock(return_value=["alpha", "beta"]),
+    )
+    monkeypatch.setattr(
+        "app.services.embedding_service.generate_embedding", generate_mock
+    )
+    monkeypatch.setattr(
+        "app.services.embedding_service.upsert_embedding",
+        AsyncMock(return_value=None),
+    )
+
+    await admin_service.start_reembed()
+
+    generate_mock.assert_awaited_once_with("T\n\nC\n\nTags: alpha, beta")

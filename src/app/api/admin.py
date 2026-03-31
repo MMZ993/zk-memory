@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -13,8 +15,21 @@ from app.services.admin_service import (
 from app.services.note_service import sync_unsynced_notes
 
 router = APIRouter(tags=["admin"])
+logger = logging.getLogger(__name__)
 
 REEMBED_CONFIRM_PHRASE = "I understand this will delete and regenerate all embeddings"
+# In-process sync repair state — single-worker only
+_sync_embeddings_state = {"status": "idle", "pending_notes": 0}
+
+
+async def _run_sync_embeddings_job() -> None:
+    _sync_embeddings_state["status"] = "in_progress"
+    try:
+        await sync_unsynced_notes()
+    except Exception:
+        logger.exception("Failed to run sync-embeddings repair job")
+    finally:
+        _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
 
 
 class ReembedRequest(BaseModel):
@@ -94,6 +109,19 @@ async def sync_embeddings_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
+    if _sync_embeddings_state["status"] in {"queued", "in_progress"}:
+        raise HTTPException(status_code=409, detail="Sync repair job already running")
+
     pending = db.query(Note).filter(Note.synced == False).count()
-    background_tasks.add_task(sync_unsynced_notes)
+    _sync_embeddings_state.update({"status": "queued", "pending_notes": pending})
+    try:
+        background_tasks.add_task(_run_sync_embeddings_job)
+    except RuntimeError as exc:
+        _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+        raise HTTPException(
+            status_code=503, detail="Failed to schedule sync repair job"
+        ) from exc
+    except Exception:
+        _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+        raise
     return {"status": "started", "pending_notes": pending}

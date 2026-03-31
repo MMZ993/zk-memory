@@ -268,7 +268,15 @@ async def update_note(
     db.commit()
 
     if settings.embedding_mode == "async" and background_tasks is not None:
-        background_tasks.add_task(_embed_and_sync_by_note_id, note.id, list(tags))
+        try:
+            background_tasks.add_task(_embed_and_sync_by_note_id, note.id, list(tags))
+        except Exception as exc:
+            note.synced = False
+            note.sync_status = "failed"
+            note.sync_last_error = str(exc)
+            note.sync_last_attempt_at = _now()
+            db.commit()
+            raise
     else:
         await _embed_and_sync(db, note, tags)
 
@@ -307,7 +315,33 @@ def delete_note(db: Session, note_id: str) -> bool:
     ).delete(synchronize_session=False)
     db.query(NoteTag).filter(NoteTag.note_id == note_id).delete()
     db.delete(note)
-    db.commit()
+    try:
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        note_after_rollback = get_note(db, note_id)
+        if note_after_rollback is not None:
+            note_after_rollback.synced = False
+            note_after_rollback.sync_status = "failed"
+            note_after_rollback.sync_last_error = (
+                "vector deleted but sqlite delete failed"
+            )
+            note_after_rollback.sync_last_attempt_at = _now()
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                logger.exception(
+                    "Note delete sqlite recovery-state commit failed",
+                    extra={"note_id": note_id},
+                )
+        logger.exception(
+            "Note delete sqlite cleanup failed after vector deletion",
+            extra={"note_id": note_id},
+        )
+        raise NoteDeleteSyncError(
+            "failed to delete note row after vector cleanup"
+        ) from exc
     return True
 
 

@@ -3,12 +3,13 @@ from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
 from app.services.admin_service import _reembed_state, start_reembed
-from app.services.note_service import sync_unsynced_notes
 
 
 def test_sync_embeddings_background_task_payload_avoids_request_session(
     client, monkeypatch
 ):
+    from app.api import admin as admin_api
+
     captured = []
 
     def _capture_add_task(self, func, *args, **kwargs):
@@ -21,7 +22,7 @@ def test_sync_embeddings_background_task_payload_avoids_request_session(
     assert r.status_code == 200
     assert len(captured) == 1
     func, args, kwargs = captured[0]
-    assert func is sync_unsynced_notes
+    assert func is admin_api._run_sync_embeddings_job
     assert all(not isinstance(arg, Session) for arg in args)
     assert kwargs == {}
 
@@ -115,6 +116,63 @@ def test_reembed_endpoint_reraises_unexpected_enqueue_errors(client, monkeypatch
             },
         )
     assert _reembed_state["status"] == "idle"
+
+
+def test_sync_embeddings_endpoint_blocks_second_request_when_job_already_queued(
+    client, monkeypatch
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+    captured = []
+
+    def _capture_add_task(self, func, *args, **kwargs):
+        captured.append((func, args, kwargs))
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _capture_add_task)
+
+    first = client.post("/api/admin/sync-embeddings")
+    second = client.post("/api/admin/sync-embeddings")
+
+    assert first.status_code == 200
+    assert second.status_code == 409
+    assert len(captured) == 1
+
+
+def test_sync_embeddings_endpoint_rolls_back_queued_state_when_enqueue_fails(
+    client, monkeypatch
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+
+    def _raise_add_task(self, func, *args, **kwargs):
+        raise RuntimeError("queue unavailable")
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
+
+    r = client.post("/api/admin/sync-embeddings")
+
+    assert r.status_code == 503
+    assert admin_api._sync_embeddings_state["status"] == "idle"
+
+
+def test_sync_embeddings_endpoint_reraises_unexpected_enqueue_errors(
+    client, monkeypatch
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+
+    def _raise_add_task(self, func, *args, **kwargs):
+        raise ValueError("unexpected enqueue error")
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
+
+    with pytest.raises(ValueError, match="unexpected enqueue error"):
+        client.post("/api/admin/sync-embeddings")
+
+    assert admin_api._sync_embeddings_state["status"] == "idle"
 
 
 def test_health_check(client):

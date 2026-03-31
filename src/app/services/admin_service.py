@@ -125,7 +125,11 @@ def get_reembed_status() -> dict:
 async def start_reembed() -> None:
     """Background task: purge Qdrant collection and regenerate all embeddings."""
     from app.services.embedding_service import generate_embedding, upsert_embedding
-    from app.services.note_service import _build_qdrant_payload, _get_tag_names
+    from app.services.note_service import (
+        _build_embedding_text,
+        _build_qdrant_payload,
+        _get_tag_names,
+    )
 
     db = None
     try:
@@ -151,7 +155,7 @@ async def start_reembed() -> None:
                 db.commit()
                 try:
                     tags = _get_tag_names(db, note.id)
-                    vector = await generate_embedding(note.title + " " + note.content)
+                    vector = await generate_embedding(_build_embedding_text(note, tags))
                     await upsert_embedding(
                         note.id, vector, _build_qdrant_payload(note, tags)
                     )

@@ -114,6 +114,49 @@ async def test_delete_note_reraises_unexpected_delete_errors(db, mock_qdrant):
     assert get_note(db, note.id) is not None
 
 
+@pytest.mark.asyncio
+async def test_delete_note_marks_row_unsynced_when_sql_delete_commit_fails(
+    db, mock_qdrant, monkeypatch
+):
+    note = await create_note(db, {"title": "Del", "content": "C"})
+    original_commit = db.commit
+    commit_calls = {"count": 0}
+
+    def _commit_with_first_failure():
+        commit_calls["count"] += 1
+        if commit_calls["count"] == 1:
+            raise RuntimeError("sqlite delete failed")
+        return original_commit()
+
+    monkeypatch.setattr(db, "commit", _commit_with_first_failure)
+
+    with pytest.raises(NoteDeleteSyncError, match="failed to delete note row"):
+        delete_note(db, note.id)
+
+    refreshed = get_note(db, note.id)
+    assert refreshed is not None
+    assert refreshed.synced is False
+    assert refreshed.sync_status == "failed"
+    assert refreshed.sync_last_error == "vector deleted but sqlite delete failed"
+
+
+@pytest.mark.asyncio
+async def test_delete_note_raises_domain_error_when_recovery_commit_fails(
+    db, mock_qdrant, monkeypatch
+):
+    note = await create_note(db, {"title": "Del", "content": "C"})
+    commit_calls = {"count": 0}
+
+    def _commit_always_fails_in_delete_flow():
+        commit_calls["count"] += 1
+        raise RuntimeError("sqlite commit failed")
+
+    monkeypatch.setattr(db, "commit", _commit_always_fails_in_delete_flow)
+
+    with pytest.raises(NoteDeleteSyncError, match="failed to delete note row"):
+        delete_note(db, note.id)
+
+
 class _CapturedBackgroundTasks:
     def __init__(self):
         self.func = None
@@ -122,6 +165,11 @@ class _CapturedBackgroundTasks:
     def add_task(self, func, *args):
         self.func = func
         self.args = args
+
+
+class _FailingBackgroundTasks:
+    def add_task(self, *_args):
+        raise RuntimeError("queue unavailable")
 
 
 @pytest.mark.asyncio
@@ -164,6 +212,25 @@ async def test_update_note_async_background_task_captures_immutable_tag_payload(
     assert len(background_tasks.args) == 2
     assert background_tasks.args[0] == note.id
     assert background_tasks.args[1] == ["alpha"]
+
+
+@pytest.mark.asyncio
+async def test_update_note_async_marks_failed_when_enqueue_fails(db, monkeypatch):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    monkeypatch.setattr(note_service.settings, "embedding_mode", "async")
+
+    with pytest.raises(RuntimeError, match="queue unavailable"):
+        await update_note(
+            db,
+            note.id,
+            {"title": "T2"},
+            background_tasks=_FailingBackgroundTasks(),
+        )
+
+    refreshed = get_note(db, note.id)
+    assert refreshed.synced is False
+    assert refreshed.sync_status == "failed"
+    assert refreshed.sync_last_error == "queue unavailable"
 
 
 @pytest.mark.asyncio
