@@ -15,6 +15,10 @@ DEBUG=False
 # API
 API_HOST=0.0.0.0
 API_PORT=8000
+CORS_ALLOW_ORIGINS=
+CORS_ALLOW_ORIGIN_REGEX=^https?://(localhost|127\.0\.0\.1)(:\d+)?$
+CORS_ALLOW_METHODS=*
+CORS_ALLOW_HEADERS=*
 
 # Database
 DATABASE_URL=sqlite:///./data/memory.db
@@ -78,6 +82,24 @@ LOG_FORMAT=json
 |-----------|----------|-------------|
 | `API_HOST` | 0.0.0.0 | Host to bind API server to |
 | `API_PORT` | 8000 | Port for API server |
+| `CORS_ALLOW_ORIGINS` | (empty) | Explicit allowlist origins (comma-separated or JSON list) |
+| `CORS_ALLOW_ORIGIN_REGEX` | `^https?://(localhost|127\.0\.0\.1)(:\d+)?$` | Regex allowlist fallback (default local-safe). Set empty to disable fallback |
+| `CORS_ALLOW_METHODS` | `*` | Comma-separated allowed CORS methods |
+| `CORS_ALLOW_HEADERS` | `*` | Comma-separated allowed CORS headers |
+
+**Examples**:
+```bash
+# Local-safe default (localhost/127.0.0.1 allowed by regex fallback)
+CORS_ALLOW_ORIGINS=
+CORS_ALLOW_ORIGIN_REGEX=^https?://(localhost|127\.0\.0\.1)(:\d+)?$
+
+# Strict explicit allowlist (disable regex fallback)
+CORS_ALLOW_ORIGINS=https://app.example,https://ui.example
+CORS_ALLOW_ORIGIN_REGEX=
+
+# JSON list format (equivalent to comma-separated)
+CORS_ALLOW_ORIGINS=["https://app.example","https://ui.example"]
+```
 
 ### Database
 

@@ -149,6 +149,10 @@ Key environment variables:
 | Variable | Default | Description |
 |-----------|----------|-------------|
 | `DATABASE_URL` | `sqlite:///./data/memory.db` | SQLite database path |
+| `CORS_ALLOW_ORIGINS` | *(empty)* | Explicit allowed origins (comma-separated or JSON list) |
+| `CORS_ALLOW_ORIGIN_REGEX` | `^https?://(localhost|127\.0\.0\.1)(:\d+)?$` | Regex fallback for local-safe CORS origins (set empty to disable fallback) |
+| `CORS_ALLOW_METHODS` | `*` | Comma-separated allowed CORS methods |
+| `CORS_ALLOW_HEADERS` | `*` | Comma-separated allowed CORS headers |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
 | `EMBEDDING_PROVIDER` | `ollama` | `ollama` (default) or `openai` |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | Model name for the chosen provider |

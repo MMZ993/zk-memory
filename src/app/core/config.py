@@ -1,5 +1,9 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, NoDecode
 from functools import lru_cache
+import json
+from typing import Annotated
+
+from pydantic import field_validator
 
 
 class Settings(BaseSettings):
@@ -8,6 +12,12 @@ class Settings(BaseSettings):
     debug: bool = False
     api_host: str = "0.0.0.0"
     api_port: int = 8000
+
+    # CORS (local-safe defaults)
+    cors_allow_origins: Annotated[list[str], NoDecode] = []
+    cors_allow_origin_regex: str | None = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
+    cors_allow_methods: Annotated[list[str], NoDecode] = ["*"]
+    cors_allow_headers: Annotated[list[str], NoDecode] = ["*"]
 
     # API key scopes — each accepts one key or comma-separated list of keys.
     # If all are empty, authentication is disabled (dev/local mode).
@@ -40,7 +50,9 @@ class Settings(BaseSettings):
     embedding_model: str = "nomic-embed-text"
     embedding_dimension: int = 768
     embedding_mode: str = "sync"  # sync | async
-    embedding_task_prefix: bool = False  # prepend search_document:/search_query: (nomic, mxbai)
+    embedding_task_prefix: bool = (
+        False  # prepend search_document:/search_query: (nomic, mxbai)
+    )
     ollama_host: str = "http://localhost:11434"
     openai_api_key: str = ""  # only needed if embedding_provider=openai
 
@@ -58,6 +70,33 @@ class Settings(BaseSettings):
     log_format: str = "json"
 
     model_config = {"env_file": ".env", "case_sensitive": False}
+
+    @field_validator(
+        "cors_allow_origins", "cors_allow_methods", "cors_allow_headers", mode="before"
+    )
+    @classmethod
+    def _parse_list_env(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            text = value.strip()
+            if not text:
+                return []
+            if text.startswith("["):
+                return json.loads(text)
+            return [item.strip() for item in text.split(",") if item.strip()]
+        return value
+
+    @field_validator("cors_allow_origin_regex", mode="before")
+    @classmethod
+    def _parse_regex_env(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
 
 @lru_cache()

@@ -31,9 +31,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors_allow_origins,
+    allow_origin_regex=settings.cors_allow_origin_regex,
+    allow_methods=settings.cors_allow_methods,
+    allow_headers=settings.cors_allow_headers,
 )
 
 from app.api import buffer, notes, tags, relations, export, admin  # noqa: E402
@@ -53,7 +54,11 @@ async def health_check():
 
 @app.get("/")
 async def root():
-    return {"message": "AI Agent Memory System API", "version": "1.0.0", "docs": "/docs"}
+    return {
+        "message": "AI Agent Memory System API",
+        "version": "1.0.0",
+        "docs": "/docs",
+    }
 
 
 if __name__ == "__main__":
