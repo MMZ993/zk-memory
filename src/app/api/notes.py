@@ -16,14 +16,24 @@ from app.models.schemas import (
 )
 from app.services.link_service import create_link, delete_link, get_note_links
 from app.services.note_service import (
+    NoteDeleteSyncError,
     create_note,
     delete_note,
     get_note,
     list_notes,
     update_note,
 )
-from app.services.search_service import search_graph, search_hybrid, search_keyword, search_semantic
-from app.services.tag_service import add_tag_to_note, get_note_tags, remove_tag_from_note
+from app.services.search_service import (
+    search_graph,
+    search_hybrid,
+    search_keyword,
+    search_semantic,
+)
+from app.services.tag_service import (
+    add_tag_to_note,
+    get_note_tags,
+    remove_tag_from_note,
+)
 
 router = APIRouter(prefix="/api/notes", tags=["notes"])
 
@@ -37,6 +47,7 @@ class NoteGraphResult(NoteResponse):
 
 
 # ── Literal routes — MUST be registered before /{note_id} ───────────────────
+
 
 @router.get("/search")
 async def search_notes_endpoint(
@@ -69,18 +80,24 @@ async def search_notes_endpoint(
 
 # ── Link management routes (before /{note_id}) ───────────────────────────────
 
+
 @router.post("/links", status_code=201)
-def create_link_endpoint(body: LinkCreate, db: Session = Depends(get_db), _: None = Depends(require_write)):
+def create_link_endpoint(
+    body: LinkCreate, db: Session = Depends(get_db), _: None = Depends(require_write)
+):
     return create_link(db, body.model_dump())
 
 
 @router.delete("/links/{link_id}", status_code=204)
-def delete_link_endpoint(link_id: str, db: Session = Depends(get_db), _: None = Depends(require_write)):
+def delete_link_endpoint(
+    link_id: str, db: Session = Depends(get_db), _: None = Depends(require_write)
+):
     if not delete_link(db, link_id):
         raise HTTPException(status_code=404, detail="Link not found")
 
 
 # ── Note CRUD ────────────────────────────────────────────────────────────────
+
 
 @router.post("/", response_model=NoteResponse, status_code=201)
 async def create_note_endpoint(
@@ -106,7 +123,9 @@ def list_notes_endpoint(
 
 
 @router.get("/{note_id}", response_model=NoteResponse)
-def get_note_endpoint(note_id: str, db: Session = Depends(get_db), _: None = Depends(require_read)):
+def get_note_endpoint(
+    note_id: str, db: Session = Depends(get_db), _: None = Depends(require_read)
+):
     note = get_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -121,19 +140,27 @@ async def update_note_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_write),
 ):
-    updated = await update_note(db, note_id, note.model_dump(exclude_none=True), background_tasks)
+    updated = await update_note(
+        db, note_id, note.model_dump(exclude_none=True), background_tasks
+    )
     if not updated:
         raise HTTPException(status_code=404, detail="Note not found")
     return updated
 
 
 @router.delete("/{note_id}", status_code=204)
-def delete_note_endpoint(note_id: str, db: Session = Depends(get_db), _: None = Depends(require_write)):
-    if not delete_note(db, note_id):
-        raise HTTPException(status_code=404, detail="Note not found")
+def delete_note_endpoint(
+    note_id: str, db: Session = Depends(get_db), _: None = Depends(require_write)
+):
+    try:
+        if not delete_note(db, note_id):
+            raise HTTPException(status_code=404, detail="Note not found")
+    except NoteDeleteSyncError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 # ── Note sub-resources ───────────────────────────────────────────────────────
+
 
 @router.get("/{note_id}/graph")
 def get_note_graph_endpoint(
@@ -167,21 +194,33 @@ def get_note_links_endpoint(
 
 
 @router.get("/{note_id}/tags", response_model=list[TagResponse])
-def get_note_tags_endpoint(note_id: str, db: Session = Depends(get_db), _: None = Depends(require_read)):
+def get_note_tags_endpoint(
+    note_id: str, db: Session = Depends(get_db), _: None = Depends(require_read)
+):
     if not get_note(db, note_id):
         raise HTTPException(status_code=404, detail="Note not found")
     return get_note_tags(db, note_id)
 
 
 @router.post("/{note_id}/tags", response_model=TagResponse, status_code=201)
-def add_tag_endpoint(note_id: str, body: TagCreate, db: Session = Depends(get_db), _: None = Depends(require_write)):
+def add_tag_endpoint(
+    note_id: str,
+    body: TagCreate,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_write),
+):
     if not get_note(db, note_id):
         raise HTTPException(status_code=404, detail="Note not found")
     return add_tag_to_note(db, note_id, body.name)
 
 
 @router.delete("/{note_id}/tags/{tag_id}", status_code=204)
-def remove_tag_endpoint(note_id: str, tag_id: str, db: Session = Depends(get_db), _: None = Depends(require_write)):
+def remove_tag_endpoint(
+    note_id: str,
+    tag_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(require_write),
+):
     if not get_note(db, note_id):
         raise HTTPException(status_code=404, detail="Note not found")
     if not remove_tag_from_note(db, note_id, tag_id):

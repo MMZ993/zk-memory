@@ -22,6 +22,10 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 
+class NoteDeleteSyncError(Exception):
+    pass
+
+
 # ── Tag helpers ───────────────────────────────────────────────────────────────
 
 
@@ -76,16 +80,30 @@ def _build_embedding_text(note: Note, tags: list[str]) -> str:
 
 async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
     """Generate embedding and mark note as synced."""
-    embedding = await generate_embedding(
-        _build_embedding_text(note, tags), task="document"
-    )
-    await upsert_embedding(
-        note_id=note.id,
-        vector=embedding,
-        payload=_build_qdrant_payload(note, tags),
-    )
-    note.synced = True
+    note.sync_attempts += 1
+    note.sync_last_attempt_at = _now()
+    note.sync_status = "syncing"
     db.commit()
+    try:
+        embedding = await generate_embedding(
+            _build_embedding_text(note, tags), task="document"
+        )
+        await upsert_embedding(
+            note_id=note.id,
+            vector=embedding,
+            payload=_build_qdrant_payload(note, tags),
+        )
+        note.synced = True
+        note.sync_status = "synced"
+        note.sync_last_success_at = _now()
+        note.sync_last_error = None
+        db.commit()
+    except Exception as exc:
+        note.synced = False
+        note.sync_status = "failed"
+        note.sync_last_error = str(exc)
+        db.commit()
+        raise
 
 
 async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
@@ -117,6 +135,11 @@ async def create_note(db: Session, note_data: dict, background_tasks=None) -> No
         created_at=_now(),
         updated_at=_now(),
         synced=False,
+        sync_status="pending",
+        sync_attempts=0,
+        sync_last_error=None,
+        sync_last_attempt_at=None,
+        sync_last_success_at=None,
     )
     db.add(note)
     db.flush()
@@ -172,6 +195,8 @@ async def update_note(
 
     note.updated_at = _now()
     note.synced = False
+    note.sync_status = "pending"
+    note.sync_last_error = None
 
     if "tags" in note_data:
         db.query(NoteTag).filter(NoteTag.note_id == note_id).delete()
@@ -196,19 +221,26 @@ def delete_note(db: Session, note_id: str) -> bool:
     if not note:
         return False
 
+    from qdrant_client.models import PointIdsList
+
+    try:
+        client.delete(
+            collection_name=QDRANT_COLLECTION,
+            points_selector=PointIdsList(points=[note_id]),
+        )
+    except Exception:
+        logger.exception(
+            "Note delete vector cleanup failed",
+            extra={"note_id": note_id},
+        )
+        raise NoteDeleteSyncError("failed to delete note vector")
+
     db.query(Link).filter(
         (Link.source_id == note_id) | (Link.target_id == note_id)
     ).delete(synchronize_session=False)
     db.query(NoteTag).filter(NoteTag.note_id == note_id).delete()
     db.delete(note)
     db.commit()
-
-    from qdrant_client.models import PointIdsList
-
-    client.delete(
-        collection_name=QDRANT_COLLECTION,
-        points_selector=PointIdsList(points=[note_id]),
-    )
     return True
 
 
@@ -218,8 +250,13 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
     try:
         db = SessionLocal()
         unsynced = db.query(Note).filter(Note.synced == False).limit(limit).all()
+        synced_count = 0
         for note in unsynced:
             try:
+                note.sync_attempts += 1
+                note.sync_last_attempt_at = _now()
+                note.sync_status = "syncing"
+                db.commit()
                 tags = _get_tag_names(db, note.id)
                 embedding = await generate_embedding(
                     _build_embedding_text(note, tags), task="document"
@@ -230,7 +267,16 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
                     payload=_build_qdrant_payload(note, tags),
                 )
                 note.synced = True
-            except Exception:
+                note.sync_status = "synced"
+                note.sync_last_success_at = _now()
+                note.sync_last_error = None
+                synced_count += 1
+                db.commit()
+            except Exception as exc:
+                note.synced = False
+                note.sync_status = "failed"
+                note.sync_last_error = str(exc)
+                db.commit()
                 logger.exception(
                     "Async unsynced note repair failed",
                     extra={
@@ -239,9 +285,8 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
                         "max_retries": 1,
                     },
                 )
-
         db.commit()
-        return len(unsynced)
+        return synced_count
     except Exception:
         logger.exception(
             "Async unsynced note repair job failed",

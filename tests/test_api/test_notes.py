@@ -50,6 +50,17 @@ def test_delete_note(client):
     assert client.get(f"/api/notes/{note['id']}").status_code == 404
 
 
+def test_delete_note_returns_503_when_vector_cleanup_fails(client, mock_qdrant):
+    note = client.post("/api/notes/", json={"title": "Del", "content": "C"}).json()
+    mock_qdrant.delete.side_effect = RuntimeError("qdrant down")
+
+    r = client.delete(f"/api/notes/{note['id']}")
+
+    assert r.status_code == 503
+    assert r.json()["detail"] == "failed to delete note vector"
+    assert client.get(f"/api/notes/{note['id']}").status_code == 200
+
+
 def test_search_keyword(client):
     r = client.get("/api/notes/search?q=hello&search_type=keyword")
     assert r.status_code == 200

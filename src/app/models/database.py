@@ -1,4 +1,13 @@
-from sqlalchemy import Column, String, DateTime, Text, Boolean, JSON, ForeignKey
+from sqlalchemy import (
+    Column,
+    String,
+    DateTime,
+    Text,
+    Boolean,
+    JSON,
+    ForeignKey,
+    Integer,
+)
 from sqlalchemy.orm import DeclarativeBase, relationship
 from datetime import datetime, timezone
 import uuid
@@ -26,8 +35,15 @@ class Note(Base):
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
     synced = Column(Boolean, default=False, nullable=False)
+    sync_status = Column(String(20), default="pending", nullable=False)
+    sync_attempts = Column(Integer, default=0, nullable=False)
+    sync_last_error = Column(Text, nullable=True)
+    sync_last_attempt_at = Column(DateTime, nullable=True)
+    sync_last_success_at = Column(DateTime, nullable=True)
 
-    note_tags = relationship("NoteTag", back_populates="note", cascade="all, delete-orphan")
+    note_tags = relationship(
+        "NoteTag", back_populates="note", cascade="all, delete-orphan"
+    )
 
     @property
     def tags(self) -> list[str]:
@@ -50,7 +66,9 @@ class Link(Base):
     id = Column(String(36), primary_key=True, default=new_uuid)
     source_id = Column(String(36), ForeignKey("notes.id"), nullable=False)
     target_id = Column(String(36), ForeignKey("notes.id"), nullable=False)
-    relation_type_id = Column(String(36), ForeignKey("relation_types.id"), nullable=False)
+    relation_type_id = Column(
+        String(36), ForeignKey("relation_types.id"), nullable=False
+    )
     description = Column(Text, nullable=True)
     created_at = Column(DateTime, default=_now, nullable=False)
 
@@ -81,7 +99,9 @@ class BufferNote(Base):
 
     id = Column(String(36), primary_key=True, default=new_uuid)
     content = Column(Text, nullable=False)
-    meta = Column(JSON, nullable=True)  # renamed from metadata to avoid SQLAlchemy reserved attr
+    meta = Column(
+        JSON, nullable=True
+    )  # renamed from metadata to avoid SQLAlchemy reserved attr
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
     processed = Column(Boolean, default=False, nullable=False)

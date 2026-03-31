@@ -1,13 +1,13 @@
 # Session Plan — 2026-03-31
 
 ## Goal
-Fix Docker integration test startup contract drift so all integration test targets run successfully again.
+Implement durable sync-state persistence for SQL↔Qdrant workflows and leave it in a verifiable, migration-backed state.
 
 ## Tasks
-- [x] Update integration Docker compose commands to match image runtime (`uv run uvicorn ...`) for sqlite/postgres/auth stacks (td:td-525e18)
-- [x] Run all integration make targets and confirm end-to-end startup/test execution path is healthy (td:td-525e18)
-- [x] Verify docs/scripts references for integration commands remain accurate after compose fixes (td:td-525e18)
+- [x] Add persisted sync-state fields/model wiring and migration for per-note sync attempts/status/error metadata (td:td-9c0794)
+- [x] Refactor sync/update/delete flows to read/write durable sync-state consistently without silent drift (td:td-9c0794)
+- [x] Add or update focused tests for sync-state persistence and recovery behavior across restarts/failures (td:td-9c0794)
 
 ## Notes
-- Reprioritized after verification findings: all integration compose targets fail with `exec: "uvicorn": executable file not found in $PATH`.
-- `td-525e18` is now `in_progress`; `td-9c0794` moved back to `open` and remains next reliability item after this fix.
+- Session scope confirmed: `td-9c0794` only.
+- Keep implementation aligned with project’s simple reliability model (single-process assumptions, minimal moving parts).
