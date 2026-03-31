@@ -64,3 +64,7 @@ Thumbs.db
 
 # Dolt database files (added by bd init)
 .dolt/
+.todos/
+
+# Agent session artifacts
+.agents/
