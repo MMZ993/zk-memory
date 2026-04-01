@@ -114,3 +114,20 @@ class Metadata(Base):
     key = Column(String(100), primary_key=True)
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=_now, nullable=False)
+
+
+class AdminJob(Base):
+    __tablename__ = "admin_jobs"
+
+    id = Column(String(36), primary_key=True, default=new_uuid)
+    job_type = Column(String(50), nullable=False)
+    status = Column(String(20), nullable=False, default="queued")
+    total_items = Column(Integer, nullable=False, default=0)
+    processed_items = Column(Integer, nullable=False, default=0)
+    failed_items = Column(Integer, nullable=False, default=0)
+    pending_items = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)

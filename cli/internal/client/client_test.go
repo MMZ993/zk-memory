@@ -201,3 +201,103 @@ func TestDo_SuccessfulResponse(t *testing.T) {
 		t.Errorf("notes[0].ID = %q, want %q", notes[0].ID, "abc")
 	}
 }
+
+func TestGetReadiness_Parses200Payload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/readiness" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ready","dependencies":{"database":"ok","qdrant":"ok"}}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	t.Setenv("MEMORY_API_URL", srv.URL)
+	t.Setenv("MEMORY_API_KEY", "")
+	t.Setenv("MEMORY_TIMEOUT", "")
+
+	c, err := client.New()
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+
+	r, err := c.GetReadiness()
+	if err != nil {
+		t.Fatalf("GetReadiness(): %v", err)
+	}
+	if r.Status != "ready" {
+		t.Fatalf("status = %q, want %q", r.Status, "ready")
+	}
+	if r.Dependencies["database"] != "ok" || r.Dependencies["qdrant"] != "ok" {
+		t.Fatalf("unexpected dependencies payload: %#v", r.Dependencies)
+	}
+}
+
+func TestGetReadiness_Parses503PayloadWithoutError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/readiness" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte(`{"status":"not_ready","dependencies":{"database":"ok","qdrant":"error"}}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	t.Setenv("MEMORY_API_URL", srv.URL)
+	t.Setenv("MEMORY_API_KEY", "")
+	t.Setenv("MEMORY_TIMEOUT", "")
+
+	c, err := client.New()
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+
+	r, err := c.GetReadiness()
+	if err != nil {
+		t.Fatalf("GetReadiness(): %v", err)
+	}
+	if r.Status != "not_ready" {
+		t.Fatalf("status = %q, want %q", r.Status, "not_ready")
+	}
+	if r.Dependencies["qdrant"] != "error" {
+		t.Fatalf("qdrant dependency = %q, want %q", r.Dependencies["qdrant"], "error")
+	}
+}
+
+func TestReembed_ParsesJobIDFromResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/reembed" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"started","job_id":"job-123","total_notes":4}`)) //nolint:errcheck
+	}))
+	defer srv.Close()
+
+	t.Setenv("MEMORY_API_URL", srv.URL)
+	t.Setenv("MEMORY_API_KEY", "")
+	t.Setenv("MEMORY_TIMEOUT", "")
+
+	c, err := client.New()
+	if err != nil {
+		t.Fatalf("New(): %v", err)
+	}
+
+	resp, err := c.Reembed("I understand this will delete and regenerate all embeddings")
+	if err != nil {
+		t.Fatalf("Reembed(): %v", err)
+	}
+	if resp.JobID != "job-123" {
+		t.Fatalf("job_id = %q, want %q", resp.JobID, "job-123")
+	}
+}

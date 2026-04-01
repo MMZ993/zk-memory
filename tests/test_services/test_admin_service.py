@@ -3,6 +3,7 @@ from qdrant_client.http.exceptions import ApiException
 from unittest.mock import AsyncMock, MagicMock
 
 import app.services.admin_service as admin_service
+from app.models.database import AdminJob
 
 
 def test_get_stats_reraises_unexpected_vector_db_errors(db, monkeypatch):
@@ -388,3 +389,23 @@ async def test_start_reembed_builds_embedding_text_with_tags(monkeypatch):
     await admin_service.start_reembed()
 
     generate_mock.assert_awaited_once_with("T\n\nC\n\nTags: alpha, beta")
+
+
+@pytest.mark.asyncio
+async def test_start_reembed_persists_terminal_failure_when_session_creation_fails(
+    db, monkeypatch
+):
+    job = admin_service.create_admin_job(db, job_type=admin_service.JOB_TYPE_REEMBED)
+    job_id = job.id
+
+    monkeypatch.setattr(
+        admin_service,
+        "SessionLocal",
+        MagicMock(side_effect=[RuntimeError("db unavailable"), db]),
+    )
+
+    await admin_service.start_reembed(job_id)
+
+    persisted = db.query(AdminJob).filter(AdminJob.id == job_id).one()
+    assert persisted.status == "failed"
+    assert persisted.last_error == "db unavailable"

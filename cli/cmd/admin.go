@@ -26,12 +26,40 @@ var adminHealthCmd = &cobra.Command{
 		if err != nil {
 			fatal("%v", err)
 		}
+		r, err := c.GetReadiness()
+		if err != nil {
+			fatal("%v", err)
+		}
+
+		database := "unknown"
+		vectorDB := "unknown"
+		if r.Dependencies != nil {
+			if v, ok := r.Dependencies["database"]; ok {
+				database = v
+			}
+			if v, ok := r.Dependencies["qdrant"]; ok {
+				vectorDB = v
+			}
+		}
+
 		if pretty {
-			fmt.Printf("status:    %s\ndatabase:  %s\nvector_db: %s\nversion:   %s\n",
-				h.Status, h.Database, h.VectorDB, h.Version)
+			fmt.Printf(
+				"status:    %s\nreadiness: %s\ndatabase:  %s\nvector_db: %s\nversion:   %s\n",
+				h.Status,
+				r.Status,
+				database,
+				vectorDB,
+				h.Version,
+			)
 			return
 		}
-		printJSON(h)
+		printJSON(map[string]any{
+			"status":    h.Status,
+			"readiness": r.Status,
+			"database":  database,
+			"vector_db": vectorDB,
+			"version":   h.Version,
+		})
 	},
 }
 
@@ -86,7 +114,7 @@ var adminSyncCmd = &cobra.Command{
 			fatal("%v", err)
 		}
 		if pretty {
-			fmt.Printf("status: %s, pending notes: %d\n", resp.Status, resp.PendingNotes)
+			fmt.Printf("status: %s, job_id: %s, pending notes: %d\n", resp.Status, resp.JobID, resp.PendingNotes)
 			return
 		}
 		printJSON(resp)
@@ -120,7 +148,7 @@ var reembedStartCmd = &cobra.Command{
 			fatal("%v", err)
 		}
 		if pretty {
-			fmt.Printf("status: %s, total notes: %d\n", resp.Status, resp.TotalNotes)
+			fmt.Printf("status: %s, job_id: %s, total notes: %d\n", resp.Status, resp.JobID, resp.TotalNotes)
 			return
 		}
 		printJSON(resp)
@@ -140,7 +168,15 @@ var reembedStatusCmd = &cobra.Command{
 			fatal("%v", err)
 		}
 		if pretty {
-			fmt.Printf("status: %s\n", resp.Status)
+			fmt.Printf(
+				"status: %s, job_id: %s, total: %d, processed: %d, failed: %d, pending: %d\n",
+				resp.Status,
+				resp.JobID,
+				resp.TotalItems,
+				resp.ProcessedItems,
+				resp.FailedItems,
+				resp.PendingItems,
+			)
 			return
 		}
 		printJSON(resp)

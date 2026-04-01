@@ -5,12 +5,18 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_admin, require_read
+from app.db.session import SessionLocal
 from app.models.database import Note
 from app.services.admin_service import (
+    AdminJobAlreadyRunningError,
+    JOB_TYPE_REEMBED,
+    JOB_TYPE_SYNC_EMBEDDINGS,
+    create_admin_job,
     get_config,
     get_reembed_status,
     get_stats,
     start_reembed,
+    update_admin_job,
 )
 from app.services.note_service import sync_unsynced_notes
 
@@ -22,13 +28,38 @@ REEMBED_CONFIRM_PHRASE = "I understand this will delete and regenerate all embed
 _sync_embeddings_state = {"status": "idle", "pending_notes": 0}
 
 
-async def _run_sync_embeddings_job() -> None:
+async def _run_sync_embeddings_job(job_id: str | None = None) -> None:
     _sync_embeddings_state["status"] = "in_progress"
+    db = None
     try:
+        db = SessionLocal()
+        if job_id is not None:
+            update_admin_job(
+                db,
+                job_id=job_id,
+                status="in_progress",
+            )
         await sync_unsynced_notes()
+        if job_id is not None:
+            update_admin_job(
+                db,
+                job_id=job_id,
+                status="finished",
+                pending_items=0,
+            )
     except Exception:
+        if job_id is not None and db is not None:
+            update_admin_job(
+                db,
+                job_id=job_id,
+                status="failed",
+                pending_items=0,
+                last_error="Failed to run sync-embeddings repair job",
+            )
         logger.exception("Failed to run sync-embeddings repair job")
     finally:
+        if db is not None:
+            db.close()
         _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
 
 
@@ -58,49 +89,45 @@ async def reembed_endpoint(
             status_code=400,
             detail=f"confirm must be: '{REEMBED_CONFIRM_PHRASE}'",
         )
-    from app.services.admin_service import _reembed_state
-
-    if _reembed_state["status"] in {"queued", "in_progress"}:
-        raise HTTPException(status_code=409, detail="Re-embed job already running")
     total = db.query(Note).count()
-    _reembed_state.update(
-        {
-            "status": "queued",
-            "total": total,
-            "processed": 0,
-            "failed": 0,
-        }
-    )
+    job_id = None
+
     try:
-        background_tasks.add_task(start_reembed)
-    except RuntimeError as exc:
-        _reembed_state.update(
-            {
-                "status": "idle",
-                "total": 0,
-                "processed": 0,
-                "failed": 0,
-            }
+        job = create_admin_job(
+            db,
+            job_type=JOB_TYPE_REEMBED,
+            total_items=total,
         )
+        job_id = job.id
+        background_tasks.add_task(start_reembed, job.id)
+    except RuntimeError as exc:
+        if job_id is not None:
+            update_admin_job(
+                db,
+                job_id=job_id,
+                status="failed",
+                pending_items=0,
+                last_error="Failed to schedule re-embed job",
+            )
         raise HTTPException(
             status_code=503, detail="Failed to schedule re-embed job"
         ) from exc
+    except AdminJobAlreadyRunningError as exc:
+        raise HTTPException(
+            status_code=409, detail="Re-embed job already running"
+        ) from exc
     except Exception:
-        _reembed_state.update(
-            {
-                "status": "idle",
-                "total": 0,
-                "processed": 0,
-                "failed": 0,
-            }
-        )
+        db.rollback()
         raise
-    return {"status": "started", "total_notes": total}
+    return {"status": "started", "job_id": job.id, "total_notes": total}
 
 
 @router.get("/api/admin/reembed/status")
-def reembed_status_endpoint(_: None = Depends(require_admin)):
-    return get_reembed_status()
+def reembed_status_endpoint(
+    db: Session = Depends(get_db),
+    _: None = Depends(require_admin),
+):
+    return get_reembed_status(db)
 
 
 @router.post("/api/admin/sync-embeddings")
@@ -109,19 +136,37 @@ async def sync_embeddings_endpoint(
     db: Session = Depends(get_db),
     _: None = Depends(require_admin),
 ):
-    if _sync_embeddings_state["status"] in {"queued", "in_progress"}:
-        raise HTTPException(status_code=409, detail="Sync repair job already running")
-
     pending = db.query(Note).filter(Note.synced == False).count()
-    _sync_embeddings_state.update({"status": "queued", "pending_notes": pending})
+    job_id = None
+
     try:
-        background_tasks.add_task(_run_sync_embeddings_job)
+        job = create_admin_job(
+            db,
+            job_type=JOB_TYPE_SYNC_EMBEDDINGS,
+            pending_items=pending,
+        )
+        job_id = job.id
+        _sync_embeddings_state.update({"status": "queued", "pending_notes": pending})
+        background_tasks.add_task(_run_sync_embeddings_job, job.id)
     except RuntimeError as exc:
+        if job_id is not None:
+            update_admin_job(
+                db,
+                job_id=job_id,
+                status="failed",
+                pending_items=0,
+                last_error="Failed to schedule sync repair job",
+            )
         _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
         raise HTTPException(
             status_code=503, detail="Failed to schedule sync repair job"
         ) from exc
+    except AdminJobAlreadyRunningError as exc:
+        raise HTTPException(
+            status_code=409, detail="Sync repair job already running"
+        ) from exc
     except Exception:
+        db.rollback()
         _sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
         raise
-    return {"status": "started", "pending_notes": pending}
+    return {"status": "started", "job_id": job.id, "pending_notes": pending}

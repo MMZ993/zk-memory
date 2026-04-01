@@ -50,6 +50,52 @@ def test_reembed_background_task_payload_avoids_request_session(client, monkeypa
     assert kwargs == {}
 
 
+def test_reembed_endpoint_returns_job_id(client, monkeypatch):
+    captured = []
+
+    def _capture_add_task(self, func, *args, **kwargs):
+        captured.append((func, args, kwargs))
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _capture_add_task)
+
+    r = client.post(
+        "/api/admin/reembed",
+        json={
+            "confirm": "I understand this will delete and regenerate all embeddings",
+        },
+    )
+
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "started"
+    assert isinstance(data["job_id"], str)
+    assert data["job_id"]
+
+
+def test_reembed_status_endpoint_returns_latest_job_metadata(client, monkeypatch):
+    def _capture_add_task(self, func, *args, **kwargs):
+        return None
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _capture_add_task)
+
+    start = client.post(
+        "/api/admin/reembed",
+        json={
+            "confirm": "I understand this will delete and regenerate all embeddings",
+        },
+    )
+    assert start.status_code == 200
+    job_id = start.json()["job_id"]
+
+    status = client.get("/api/admin/reembed/status")
+
+    assert status.status_code == 200
+    payload = status.json()
+    assert payload["job_id"] == job_id
+    assert payload["job_type"] == "reembed"
+    assert payload["status"] == "queued"
+
+
 def test_reembed_endpoint_blocks_second_request_when_job_already_queued(
     client, monkeypatch
 ):
@@ -83,9 +129,12 @@ def test_reembed_endpoint_rolls_back_queued_state_when_enqueue_fails(
     client, monkeypatch
 ):
     _reembed_state.update({"status": "idle", "total": 0, "processed": 0, "failed": 0})
+    calls = {"n": 0}
 
     def _raise_add_task(self, func, *args, **kwargs):
-        raise RuntimeError("queue unavailable")
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("queue unavailable")
 
     monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
 
@@ -95,8 +144,15 @@ def test_reembed_endpoint_rolls_back_queued_state_when_enqueue_fails(
             "confirm": "I understand this will delete and regenerate all embeddings",
         },
     )
+    retry = client.post(
+        "/api/admin/reembed",
+        json={
+            "confirm": "I understand this will delete and regenerate all embeddings",
+        },
+    )
 
     assert r.status_code == 503
+    assert retry.status_code == 200
     assert _reembed_state["status"] == "idle"
 
 
@@ -145,16 +201,21 @@ def test_sync_embeddings_endpoint_rolls_back_queued_state_when_enqueue_fails(
     from app.api import admin as admin_api
 
     admin_api._sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+    calls = {"n": 0}
 
     def _raise_add_task(self, func, *args, **kwargs):
-        raise RuntimeError("queue unavailable")
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("queue unavailable")
 
     monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
 
     r = client.post("/api/admin/sync-embeddings")
+    retry = client.post("/api/admin/sync-embeddings")
 
     assert r.status_code == 503
-    assert admin_api._sync_embeddings_state["status"] == "idle"
+    assert retry.status_code == 200
+    assert admin_api._sync_embeddings_state["status"] == "queued"
 
 
 def test_sync_embeddings_endpoint_reraises_unexpected_enqueue_errors(
@@ -173,6 +234,26 @@ def test_sync_embeddings_endpoint_reraises_unexpected_enqueue_errors(
         client.post("/api/admin/sync-embeddings")
 
     assert admin_api._sync_embeddings_state["status"] == "idle"
+
+
+@pytest.mark.asyncio
+async def test_sync_embeddings_background_job_handles_session_creation_failure(
+    monkeypatch,
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "queued", "pending_notes": 5})
+
+    monkeypatch.setattr(
+        admin_api,
+        "SessionLocal",
+        lambda: (_ for _ in ()).throw(RuntimeError("db unavailable")),
+    )
+
+    await admin_api._run_sync_embeddings_job("job-1")
+
+    assert admin_api._sync_embeddings_state["status"] == "idle"
+    assert admin_api._sync_embeddings_state["pending_notes"] == 0
 
 
 def test_health_check(client):
