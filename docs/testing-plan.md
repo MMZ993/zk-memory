@@ -548,9 +548,6 @@ jobs:
           uv sync --frozen
 
       - name: Run tests
-        env:
-          EMBEDDING_PROVIDER=openai
-          OPENAI_API_KEY=test-key
         run: |
           uv run pytest tests/ --cov=app --cov-report=xml
 

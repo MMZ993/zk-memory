@@ -19,13 +19,12 @@ type StatsResponse struct {
 
 // ConfigResponse is the response from GET /api/config.
 type ConfigResponse struct {
-	EmbeddingProvider  string `json:"embedding_provider"`
-	EmbeddingModel     string `json:"embedding_model"`
-	EmbeddingDimension int    `json:"embedding_dimension"`
-	EmbeddingMode      string `json:"embedding_mode"`
-	BufferRetentionDays int   `json:"buffer_retention_days"`
-	Debug              bool   `json:"debug"`
-	Version            string `json:"version"`
+	EmbeddingModel      string `json:"embedding_model"`
+	EmbeddingDimension  int    `json:"embedding_dimension"`
+	EmbeddingMode       string `json:"embedding_mode"`
+	BufferRetentionDays int    `json:"buffer_retention_days"`
+	Debug               bool   `json:"debug"`
+	Version             string `json:"version"`
 }
 
 // SyncResponse is the response from POST /api/admin/sync-embeddings.

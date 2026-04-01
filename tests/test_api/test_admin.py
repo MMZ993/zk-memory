@@ -286,6 +286,7 @@ def test_config_no_secrets(client):
     r = client.get("/api/config")
     assert r.status_code == 200
     data = r.json()
+    assert "embedding_provider" not in data
     # Must not expose API keys
     body_str = str(data).lower()
     assert "api_key" not in body_str or data.get("api_key") in (None, "", "***")

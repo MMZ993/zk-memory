@@ -150,7 +150,7 @@ agents_memory/
 | `tag_service.py` | Tag management |
 | `relation_service.py` | Relation type management |
 | `search_service.py` | Semantic search, filtering |
-| `embedding_service.py` | Embedding generation (OpenAI/local) |
+| `embedding_service.py` | Local embedding generation (Ollama) |
 | `export_service.py` | Markdown export/import, formatting |
 
 #### Database (`app/db/`)

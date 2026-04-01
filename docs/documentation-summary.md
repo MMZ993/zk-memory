@@ -97,11 +97,9 @@ Reference `docs/project-structure.md`:
 - Background job for syncing unsynced notes
 - Ensures data consistency
 
-### 4. Embedding Providers: OpenAI + Ollama
+### 4. Embeddings: Local Ollama
 - Async embedding generation for better performance
-- Configurable via `EMBEDDING_PROVIDER` environment variable
-- OpenAI for production (paid, fast)
-- Ollama for local development (free, slower)
+- Configurable via local Ollama model settings
 
 ### 5. Update Strategy: In-Place with updated_at
 - Simplest approach for MVP

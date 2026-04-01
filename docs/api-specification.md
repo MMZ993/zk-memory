@@ -490,9 +490,8 @@ System management and monitoring.
 **Response**: Safe subset of current configuration — never exposes secrets.
 ```json
 {
-  "embedding_provider": "openai",
-  "embedding_model": "text-embedding-ada-002",
-  "embedding_dimension": 1536,
+  "embedding_model": "nomic-embed-text",
+  "embedding_dimension": 768,
   "embedding_mode": "async",
   "buffer_retention_days": 7,
   "debug": false,
@@ -500,7 +499,7 @@ System management and monitoring.
 }
 ```
 
-> **Never include**: `api_key`, `openai_api_key`, `qdrant_api_key`, `database_url`, or any credential field.
+> **Never include**: `api_key`, `qdrant_api_key`, `database_url`, or any credential field.
 
 #### Purge and Re-embed All Notes
 

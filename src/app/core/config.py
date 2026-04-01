@@ -41,12 +41,9 @@ class Settings(BaseSettings):
     qdrant_collection: str = "notes_embeddings"
     qdrant_api_key: str = ""
 
-    # Embeddings
-    # Provider: "ollama" (default, local) | "openai" (cloud, requires API key)
-    # Ollama model: nomic-embed-text (768-dim, fast, production-ready for home lab)
-    #   Alternative: mxbai-embed-large (1024-dim, higher quality, more VRAM)
-    # OpenAI model: text-embedding-ada-002 (1536-dim) — not used by default
-    embedding_provider: str = "ollama"
+    # Embeddings (local-only via Ollama)
+    # Default model: nomic-embed-text (768-dim, fast, production-ready for home lab)
+    # Alternative: mxbai-embed-large (1024-dim, higher quality, more VRAM)
     embedding_model: str = "nomic-embed-text"
     embedding_dimension: int = 768
     embedding_mode: str = "sync"  # sync | async
@@ -54,7 +51,6 @@ class Settings(BaseSettings):
         False  # prepend search_document:/search_query: (nomic, mxbai)
     )
     ollama_host: str = "http://localhost:11434"
-    openai_api_key: str = ""  # only needed if embedding_provider=openai
 
     # Notes
     note_max_content_length: int = 2048  # max chars per note content; 0 = unlimited

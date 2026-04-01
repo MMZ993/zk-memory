@@ -9,7 +9,7 @@ This guide walks through implementing the AI Agent Memory System in phases.
 **Prerequisites**:
 - Python 3.13+
 - Docker (for Qdrant)
-- OpenAI API key (or use local embeddings)
+- Ollama with a local embedding model available
 
 **Architecture**:
 - SQLite for structured data (notes, links, tags, buffer)
@@ -65,7 +65,6 @@ dependencies = [
   "sqlalchemy",
   "alembic",
   "qdrant-client",
-  "openai",
   "python-dotenv",
   "pydantic",
   "pydantic-settings",
@@ -108,9 +107,9 @@ QDRANT_COLLECTION=notes_embeddings
 QDRANT_API_KEY=
 
 # Embeddings
-EMBEDDING_MODEL=openai:text-embedding-ada-002
-EMBEDDING_DIMENSION=1536
-OPENAI_API_KEY=sk-...
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMENSION=768
+OLLAMA_HOST=http://localhost:11434
 
 # Buffer Notes
 BUFFER_RETENTION_DAYS=7
@@ -219,11 +218,9 @@ class Settings(BaseSettings):
     qdrant_api_key: str = ""
 
     # Embeddings
-    embedding_provider: str = "openai"  # openai | ollama
-    embedding_model: str = "text-embedding-ada-002"
-    embedding_dimension: int = 1536
+    embedding_model: str = "nomic-embed-text"
+    embedding_dimension: int = 768
     embedding_mode: str = "sync"  # sync (block request) | async (return immediately, embed in background)
-    openai_api_key: str = ""
     ollama_host: str = "http://localhost:11434"
 
     # Buffer
@@ -524,7 +521,6 @@ class TagResponse(BaseModel):
 ### 4.1 Create Embedding Service (`app/services/embedding_service.py`)
 
 ```python
-from openai import AsyncOpenAI
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchAny
 import httpx
 
@@ -532,24 +528,9 @@ from app.db.qdrant import client, QDRANT_COLLECTION
 from app.core.config import get_settings
 
 settings = get_settings()
-openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-
 async def generate_embedding(text: str) -> list[float]:
-    """Generate embedding using configured provider (openai | ollama)."""
-    if settings.embedding_provider == "openai":
-        return await _generate_openai_embedding(text)
-    elif settings.embedding_provider == "ollama":
-        return await _generate_ollama_embedding(text)
-    raise ValueError(f"Unknown embedding provider: {settings.embedding_provider}")
-
-
-async def _generate_openai_embedding(text: str) -> list[float]:
-    response = await openai_client.embeddings.create(
-        input=text,
-        model=settings.embedding_model,
-    )
-    return response.data[0].embedding
+    """Generate embedding using local Ollama."""
+    return await _generate_ollama_embedding(text)
 
 
 async def _generate_ollama_embedding(text: str) -> list[float]:
@@ -1758,7 +1739,6 @@ def get_stats(db: Session) -> dict:
 def get_config() -> dict:
     """Return non-sensitive config values (no API keys)."""
     return {
-        "embedding_provider": settings.embedding_provider,
         "embedding_model": settings.embedding_model,
         "embedding_dimension": settings.embedding_dimension,
         "embedding_mode": settings.embedding_mode,

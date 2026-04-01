@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 
 from app.models.database import Note
 
@@ -106,6 +107,64 @@ def test_docs_and_scripts_do_not_reference_legacy_dependency_workflow():
         "docs/testing-plan.md",
         "scripts/reset_integration.sh",
         "tests/integration/conftest.py",
+    )
+
+    for path in paths:
+        content = Path(path).read_text()
+        for token in disallowed_tokens:
+            assert token not in content, f"{path} still references {token}"
+
+
+def test_embedding_stack_is_local_only():
+    config = Path("src/app/core/config.py").read_text()
+    embedding_service = Path("src/app/services/embedding_service.py").read_text()
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text())
+    uv_lock = Path("uv.lock").read_text()
+
+    assert "embedding_provider" not in config
+    assert "openai_api_key" not in config
+    assert "_openai_embed" not in embedding_service
+    assert "from openai" not in embedding_service
+    dependencies = pyproject["project"]["dependencies"]
+    assert all(not dependency.startswith("openai") for dependency in dependencies)
+    assert 'name = "openai"' not in uv_lock
+
+
+def test_runtime_env_surfaces_do_not_expose_provider_switching():
+    env_example = Path(".env.example").read_text()
+    compose = Path("docker-compose.yml").read_text()
+    compose_pg = Path("docker-compose.postgres.yml").read_text()
+    compose_test = Path("docker-compose.test.yml").read_text()
+    compose_test_pg = Path("docker-compose.test.postgres.yml").read_text()
+    compose_test_auth = Path("docker-compose.test.auth.yml").read_text()
+
+    assert "EMBEDDING_PROVIDER" not in env_example
+    assert "OPENAI_API_KEY" not in env_example
+    assert "EMBEDDING_PROVIDER" not in compose
+    assert "EMBEDDING_PROVIDER" not in compose_pg
+    assert "EMBEDDING_PROVIDER" not in compose_test
+    assert "EMBEDDING_PROVIDER" not in compose_test_pg
+    assert "EMBEDDING_PROVIDER" not in compose_test_auth
+
+
+def test_docs_and_prompts_do_not_reference_openai_or_provider_switching():
+    disallowed_tokens = (
+        "EMBEDDING_PROVIDER=",
+        "OPENAI_API_KEY",
+        '"embedding_provider"',
+        "`embedding_provider`",
+    )
+    paths = (
+        "README.md",
+        "CLAUDE.md",
+        "docs/api-specification.md",
+        "docs/configuration.md",
+        "docs/documentation-summary.md",
+        "docs/implementation-guide.md",
+        "docs/IMPLEMENTATION_GAPS.md",
+        "docs/MANUAL_TESTING.md",
+        "docs/project-structure.md",
+        "docs/testing-plan.md",
     )
 
     for path in paths:

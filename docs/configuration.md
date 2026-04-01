@@ -29,20 +29,13 @@ QDRANT_PORT=6333
 QDRANT_COLLECTION=notes_embeddings
 QDRANT_API_KEY=  # Optional, for remote deployment
 
-# Embeddings Provider: openai or ollama
-EMBEDDING_PROVIDER=openai
-EMBEDDING_MODEL=text-embedding-ada-002
-EMBEDDING_DIMENSION=1536
-OPENAI_API_KEY=sk-...
+# Embeddings (local Ollama)
+EMBEDDING_MODEL=nomic-embed-text
+EMBEDDING_DIMENSION=768
+OLLAMA_HOST=http://localhost:11434
 
 # Embedding mode: sync (block request, default) or async (return immediately, embed in background)
 EMBEDDING_MODE=sync
-
-# Alternative: Ollama (local)
-# EMBEDDING_PROVIDER=ollama
-# EMBEDDING_MODEL=nomic-embed-text
-# EMBEDDING_DIMENSION=768
-# OLLAMA_HOST=http://localhost:11434
 
 # API Authentication
 API_KEY=  # Optional: Require X-API-Key header for all requests (leave empty to disable)
@@ -145,35 +138,19 @@ QDRANT_API_KEY=your-api-key-here
 
 | Variable | Default | Description |
 |-----------|----------|-------------|
-| `EMBEDDING_PROVIDER` | openai | Provider: openai or ollama |
-| `EMBEDDING_MODEL` | text-embedding-ada-002 | Embedding model to use |
-| `EMBEDDING_DIMENSION` | 1536 | Dimension of embedding vectors |
+| `EMBEDDING_MODEL` | nomic-embed-text | Local Ollama embedding model |
+| `EMBEDDING_DIMENSION` | 768 | Dimension of embedding vectors |
 | `EMBEDDING_MODE` | sync | `sync`: block request until embedded; `async`: return immediately, embed in background |
-| `OPENAI_API_KEY` | (required for openai) | OpenAI API key |
 | `OLLAMA_HOST` | http://localhost:11434 | Ollama server URL |
 
-**Supported Providers and Models**:
-
-**OpenAI Models**:
-- `text-embedding-ada-002` - 1536 dimensions
-- `text-embedding-3-small` - 1536 dimensions
-- `text-embedding-3-large` - 3072 dimensions
-
-**Ollama Models**:
+**Supported Local Models (Ollama)**:
 - `nomic-embed-text` - 768 dimensions
 - `mxbai-embed-large` - 1024 dimensions
 - `all-minilm` - 384 dimensions
 
 **Examples**:
 ```bash
-# OpenAI (requires API key)
-EMBEDDING_PROVIDER=openai
-EMBEDDING_MODEL=text-embedding-ada-002
-EMBEDDING_DIMENSION=1536
-OPENAI_API_KEY=sk-proj-...
-
-# Ollama (local, free)
-EMBEDDING_PROVIDER=ollama
+# Ollama (local)
 EMBEDDING_MODEL=nomic-embed-text
 EMBEDDING_DIMENSION=768
 OLLAMA_HOST=http://localhost:11434
@@ -362,7 +339,6 @@ EMBEDDING_MODEL=sentence-transformers:all-MiniLM-L6-v2
 echo ".env" >> .gitignore
 
 # Use strong API keys
-OPENAI_API_KEY=sk-proj-xxx...  # Generate from OpenAI dashboard
 QDRANT_API_KEY=xxx...  # Generate from Qdrant Cloud (if using)
 
 # Disable debug mode
@@ -420,7 +396,6 @@ PRAGMA journal_mode=WAL;
 
 **Slow Embeddings**:
 ```bash
-# Use local model instead of OpenAI
 EMBEDDING_MODEL=sentence-transformers:all-MiniLM-L6-v2
 
 # Increase parallelism
@@ -430,6 +405,6 @@ EMBEDDING_BATCH_SIZE=32
 ## Next Steps
 
 1. Copy `.env.example` to `.env`
-2. Fill in required values (especially OPENAI_API_KEY)
+2. Fill in required values
 3. Review and adjust defaults based on your needs
 4. Run the application: `uvicorn main:app --reload`

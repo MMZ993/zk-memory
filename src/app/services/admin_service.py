@@ -108,7 +108,6 @@ def get_stats(db: Session) -> dict:
 
 def get_config() -> dict:
     return {
-        "embedding_provider": settings.embedding_provider,
         "embedding_model": settings.embedding_model,
         "embedding_dimension": settings.embedding_dimension,
         "embedding_mode": settings.embedding_mode,

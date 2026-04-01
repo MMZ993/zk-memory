@@ -12,7 +12,6 @@ Step-by-step instructions to start the stack with PostgreSQL, load seed data, an
   ```bash
   ollama pull nomic-embed-text
   ```
-- (Optional) `OPENAI_API_KEY` env var if you switch `EMBEDDING_PROVIDER=openai` in `docker-compose.postgres.yml`
 
 ---
 

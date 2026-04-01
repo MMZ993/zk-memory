@@ -35,7 +35,7 @@ Docker copies `src/` only — docs, tests, and config files never enter the imag
 - **FastAPI** + uvicorn
 - **SQLite** via SQLAlchemy 2.0 ORM
 - **Qdrant** for vector storage (run via Docker)
-- **Embeddings**: OpenAI (`text-embedding-ada-002`) or Ollama (`nomic-embed-text`)
+- **Embeddings**: Local Ollama (`nomic-embed-text`)
 - **Auth**: Optional `X-API-Key` header (set `API_KEY` env var)
 
 ## Running the Project
@@ -61,7 +61,7 @@ pytest tests/ -v
 ## Key Design Decisions
 
 - **Cross-DB sync**: `synced` bool on notes. Written with `synced=false` → embedded → Qdrant upsert → `synced=true`. The `false` state means "not yet embedded" (new note or prior embedding failure).
-- **Embeddings**: Async, configurable via `EMBEDDING_PROVIDER=openai|ollama`
+- **Embeddings**: Async, local Ollama-only
 - **Search**: 4 modes — semantic (vector), keyword (SQLite FTS5), graph (relationship traversal), hybrid
 - **Buffer notes**: Fast writes to SQLite only (no embedding). The API provides primitives (create, list, mark-processed, cleanup). The calling agent decides when/how to promote buffer → notes.
 - **Markdown**: DB is source of truth. Export to files for human viewing; optional sync-back via scripts
@@ -85,8 +85,8 @@ Copy `.env.example` to `.env`. Key vars:
 |----------|---------|
 | `DATABASE_URL` | SQLite path (default: `sqlite:///./data/memory.db`) |
 | `QDRANT_HOST` | Qdrant host (default: `localhost`) |
-| `EMBEDDING_PROVIDER` | `openai` or `ollama` |
-| `OPENAI_API_KEY` | Required if using OpenAI embeddings |
+| `EMBEDDING_MODEL` | Local Ollama embedding model |
+| `OLLAMA_HOST` | Ollama endpoint URL |
 | `API_KEY` | Optional API authentication |
 | `BUFFER_RETENTION_DAYS` | Days to keep processed buffer notes |
 

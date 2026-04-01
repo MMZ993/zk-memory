@@ -22,12 +22,9 @@
 
 ## Dependency Compatibility Notes (for coding phases)
 
-### openai 2.x (installed: 2.26.0, was pinned at >=1.3.0)
-- Client instantiation: `openai.AsyncOpenAI(api_key=...)` — same as v1, still works
-- Embeddings call: `client.embeddings.create(model=..., input=...)` — same as v1
-- **Breaking change**: Response type for embeddings changed — use `.data[0].embedding` (same) but `model` field and usage metadata differ slightly
-- **Breaking change**: v2 removed several deprecated methods and moved some types — check `openai.types.create_embedding_response` if accessing response metadata
-- When writing `embedding_service.py`: use `AsyncOpenAI`, call `await client.embeddings.create(...)`, access result as `response.data[0].embedding`
+### Local embedding provider
+- Embeddings are local-only via Ollama.
+- Keep `EMBEDDING_MODEL`, `EMBEDDING_DIMENSION`, and `OLLAMA_HOST` aligned.
 
 ### pytest-asyncio 1.x (installed: 1.3.0, was pinned at >=0.21.0)
 - `asyncio_mode = "auto"` is now set in `pyproject.toml` under `[tool.pytest.ini_options]` — already added

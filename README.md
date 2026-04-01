@@ -15,7 +15,7 @@ A long-term memory system for AI agents inspired by the Zettelkasten note-taking
 - **API-First**: Complete REST API for agent integration
 - **Simple Deployment**: Docker-compose for easy setup
 - **Backup/Restore**: Full system backup with SQLite and Qdrant snapshots
-- **Model Switching**: Switch embedding providers (OpenAI/Ollama) and re-embed
+- **Model Switching**: Switch local Ollama models and re-embed
 
 ## Architecture
 
@@ -154,11 +154,9 @@ Key environment variables:
 | `CORS_ALLOW_METHODS` | `*` | Comma-separated allowed CORS methods |
 | `CORS_ALLOW_HEADERS` | `*` | Comma-separated allowed CORS headers |
 | `QDRANT_HOST` | `localhost` | Qdrant server host |
-| `EMBEDDING_PROVIDER` | `ollama` | `ollama` (default) or `openai` |
-| `EMBEDDING_MODEL` | `nomic-embed-text` | Model name for the chosen provider |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Local Ollama embedding model |
 | `EMBEDDING_TASK_PREFIX` | `false` | Prepend `search_document:`/`search_query:` task prefixes. Improves retrieval quality with nomic-embed-text and mxbai-embed-large. **Set to `true` for fresh deployments.** Changing on an existing index requires a full re-embed via the admin API. |
 | `NOTE_MAX_CONTENT_LENGTH` | `2048` | Max note content size in characters. `0` = unlimited. Notes over the limit are rejected with HTTP 422. |
-| `OPENAI_API_KEY` | — | Optional; only if `EMBEDDING_PROVIDER=openai` |
 | `BUFFER_RETENTION_DAYS` | `7` | Days to keep processed buffer notes (`0` = keep forever) |
 
 See [Configuration](docs/configuration.md) for complete reference.
@@ -168,7 +166,7 @@ See [Configuration](docs/configuration.md) for complete reference.
 - **Framework**: FastAPI
 - **Database**: SQLite with SQLAlchemy ORM
 - **Vector DB**: Qdrant (with HNSW indexing)
-- **Embeddings**: OpenAI (or sentence-transformers for local)
+- **Embeddings**: Local Ollama
 - **Deployment**: Docker, Docker Compose
 
 ## Development
