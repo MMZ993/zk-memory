@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 from qdrant_client.http.exceptions import ApiException
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 from app.models.database import Tag
 import app.services.note_service as note_service
@@ -125,7 +126,7 @@ async def test_delete_note_marks_row_unsynced_when_sql_delete_commit_fails(
     def _commit_with_first_failure():
         commit_calls["count"] += 1
         if commit_calls["count"] == 1:
-            raise RuntimeError("sqlite delete failed")
+            raise SQLAlchemyError("sqlite delete failed")
         return original_commit()
 
     monkeypatch.setattr(db, "commit", _commit_with_first_failure)
@@ -149,12 +150,52 @@ async def test_delete_note_raises_domain_error_when_recovery_commit_fails(
 
     def _commit_always_fails_in_delete_flow():
         commit_calls["count"] += 1
-        raise RuntimeError("sqlite commit failed")
+        raise SQLAlchemyError("sqlite commit failed")
 
     monkeypatch.setattr(db, "commit", _commit_always_fails_in_delete_flow)
 
     with pytest.raises(NoteDeleteSyncError, match="failed to delete note row"):
         delete_note(db, note.id)
+
+
+@pytest.mark.asyncio
+async def test_delete_note_reraises_unexpected_sqlite_commit_errors(
+    db, mock_qdrant, monkeypatch
+):
+    note = await create_note(db, {"title": "Del", "content": "C"})
+
+    def _commit_unexpected_failure():
+        raise ValueError("unexpected sqlite bug")
+
+    monkeypatch.setattr(db, "commit", _commit_unexpected_failure)
+
+    with pytest.raises(ValueError, match="unexpected sqlite bug"):
+        delete_note(db, note.id)
+
+
+@pytest.mark.asyncio
+async def test_delete_note_reraises_unexpected_first_commit_error_when_recovery_succeeds(
+    db, mock_qdrant, monkeypatch
+):
+    note = await create_note(db, {"title": "Del", "content": "C"})
+    original_commit = db.commit
+    commit_calls = {"count": 0}
+
+    def _commit_first_unexpected_then_succeed():
+        commit_calls["count"] += 1
+        if commit_calls["count"] == 1:
+            raise ValueError("unexpected first commit bug")
+        return original_commit()
+
+    monkeypatch.setattr(db, "commit", _commit_first_unexpected_then_succeed)
+
+    with pytest.raises(ValueError, match="unexpected first commit bug"):
+        delete_note(db, note.id)
+
+    refreshed = get_note(db, note.id)
+    assert refreshed is not None
+    assert refreshed.sync_status == "failed"
+    assert refreshed.sync_last_error == "vector deleted but sqlite delete failed"
 
 
 class _CapturedBackgroundTasks:
@@ -170,6 +211,11 @@ class _CapturedBackgroundTasks:
 class _FailingBackgroundTasks:
     def add_task(self, *_args):
         raise RuntimeError("queue unavailable")
+
+
+class _UnexpectedFailingBackgroundTasks:
+    def add_task(self, *_args):
+        raise ValueError("unexpected queue bug")
 
 
 @pytest.mark.asyncio
@@ -231,6 +277,27 @@ async def test_update_note_async_marks_failed_when_enqueue_fails(db, monkeypatch
     assert refreshed.synced is False
     assert refreshed.sync_status == "failed"
     assert refreshed.sync_last_error == "queue unavailable"
+
+
+@pytest.mark.asyncio
+async def test_update_note_async_reraises_unexpected_enqueue_errors_without_failure_state(
+    db, monkeypatch
+):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    monkeypatch.setattr(note_service.settings, "embedding_mode", "async")
+
+    with pytest.raises(ValueError, match="unexpected queue bug"):
+        await update_note(
+            db,
+            note.id,
+            {"title": "T2"},
+            background_tasks=_UnexpectedFailingBackgroundTasks(),
+        )
+
+    refreshed = get_note(db, note.id)
+    assert refreshed.synced is False
+    assert refreshed.sync_status == "pending"
+    assert refreshed.sync_last_error is None
 
 
 @pytest.mark.asyncio
@@ -386,6 +453,31 @@ async def test_sync_unsynced_notes_logs_failure_with_retry_metadata(db, monkeypa
 
 
 @pytest.mark.asyncio
+async def test_sync_unsynced_notes_reraises_unexpected_programming_errors(
+    db, monkeypatch
+):
+    note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
+    note.synced = False
+    note.sync_status = "pending"
+    db.commit()
+
+    testing_session = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=db.get_bind(),
+    )
+    monkeypatch.setattr(note_service, "SessionLocal", testing_session)
+    monkeypatch.setattr(
+        note_service,
+        "generate_embedding",
+        AsyncMock(side_effect=ValueError("bad embedding input")),
+    )
+
+    with pytest.raises(ValueError, match="bad embedding input"):
+        await note_service.sync_unsynced_notes(limit=10)
+
+
+@pytest.mark.asyncio
 async def test_sync_unsynced_notes_logs_and_returns_zero_when_session_creation_fails(
     monkeypatch,
 ):
@@ -514,7 +606,7 @@ async def test_embed_and_sync_by_note_id_retries_transient_upsert_failure(
 
 
 @pytest.mark.asyncio
-async def test_embed_and_sync_by_note_id_does_not_retry_non_retryable_error(
+async def test_embed_and_sync_by_note_id_reraises_non_retryable_programming_error(
     db, monkeypatch
 ):
     note = await create_note(db, {"title": "T", "content": "C", "tags": ["x"]})
@@ -534,19 +626,10 @@ async def test_embed_and_sync_by_note_id_does_not_retry_non_retryable_error(
     monkeypatch.setattr(note_service, "generate_embedding", generate_mock)
     monkeypatch.setattr(note_service, "logger", mock_logger)
 
-    await note_service._embed_and_sync_by_note_id(note.id, ["x"])
+    with pytest.raises(ValueError, match="invalid embedding input"):
+        await note_service._embed_and_sync_by_note_id(note.id, ["x"])
 
-    verify_db = testing_session()
-    refreshed_note = get_note(verify_db, note.id)
     assert generate_mock.await_count == 1
-    assert refreshed_note.synced is False
-    assert refreshed_note.sync_status == "failed"
-    assert refreshed_note.sync_last_error == "invalid embedding input"
-    assert refreshed_note.sync_attempts == 2
-    _, kwargs = mock_logger.exception.call_args
-    assert kwargs["extra"]["retry_attempt"] == 1
-    assert kwargs["extra"]["max_retries"] == 2
-    verify_db.close()
 
 
 @pytest.mark.asyncio

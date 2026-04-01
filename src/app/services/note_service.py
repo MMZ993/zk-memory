@@ -7,6 +7,7 @@ import uuid
 import httpx
 from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
 from sqlalchemy import asc, desc, func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.database import Note, Tag, NoteTag, Link
@@ -170,6 +171,25 @@ async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
         if not note:
             return
         await _embed_and_sync(db, note, tags)
+    except (
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        ApiException,
+        ResponseHandlingException,
+        SQLAlchemyError,
+    ) as exc:
+        retry_attempt = getattr(exc, "sync_retry_attempt", 1)
+        max_retries = getattr(exc, "sync_max_retries", SYNC_MAX_RETRIES)
+        logger.exception(
+            "Async note embedding sync failed",
+            extra={
+                "note_id": note_id,
+                "retry_attempt": retry_attempt,
+                "max_retries": max_retries,
+            },
+        )
     except Exception as exc:
         retry_attempt = getattr(exc, "sync_retry_attempt", 1)
         max_retries = getattr(exc, "sync_max_retries", SYNC_MAX_RETRIES)
@@ -181,6 +201,7 @@ async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
                 "max_retries": max_retries,
             },
         )
+        raise
     finally:
         db.close()
 
@@ -270,7 +291,7 @@ async def update_note(
     if settings.embedding_mode == "async" and background_tasks is not None:
         try:
             background_tasks.add_task(_embed_and_sync_by_note_id, note.id, list(tags))
-        except Exception as exc:
+        except RuntimeError as exc:
             note.synced = False
             note.sync_status = "failed"
             note.sync_last_error = str(exc)
@@ -317,7 +338,7 @@ def delete_note(db: Session, note_id: str) -> bool:
     db.delete(note)
     try:
         db.commit()
-    except Exception as exc:
+    except SQLAlchemyError as exc:
         db.rollback()
         note_after_rollback = get_note(db, note_id)
         if note_after_rollback is not None:
@@ -329,7 +350,7 @@ def delete_note(db: Session, note_id: str) -> bool:
             note_after_rollback.sync_last_attempt_at = _now()
             try:
                 db.commit()
-            except Exception:
+            except SQLAlchemyError:
                 db.rollback()
                 logger.exception(
                     "Note delete sqlite recovery-state commit failed",
@@ -342,6 +363,25 @@ def delete_note(db: Session, note_id: str) -> bool:
         raise NoteDeleteSyncError(
             "failed to delete note row after vector cleanup"
         ) from exc
+    except Exception:
+        db.rollback()
+        note_after_rollback = get_note(db, note_id)
+        if note_after_rollback is not None:
+            note_after_rollback.synced = False
+            note_after_rollback.sync_status = "failed"
+            note_after_rollback.sync_last_error = (
+                "vector deleted but sqlite delete failed"
+            )
+            note_after_rollback.sync_last_attempt_at = _now()
+            try:
+                db.commit()
+            except SQLAlchemyError:
+                db.rollback()
+                logger.exception(
+                    "Note delete sqlite recovery-state commit failed",
+                    extra={"note_id": note_id},
+                )
+        raise
     return True
 
 
@@ -368,9 +408,21 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
                         ),
                     },
                 )
+                if not (
+                    _is_retryable_sync_error(exc) or isinstance(exc, SQLAlchemyError)
+                ):
+                    raise
         db.commit()
         return synced_count
-    except Exception:
+    except (
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        ApiException,
+        ResponseHandlingException,
+        SQLAlchemyError,
+    ):
         logger.exception(
             "Async unsynced note repair job failed",
             extra={

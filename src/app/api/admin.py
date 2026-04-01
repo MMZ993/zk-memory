@@ -1,7 +1,9 @@
 import logging
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, require_admin, require_read
@@ -47,16 +49,51 @@ async def _run_sync_embeddings_job(job_id: str | None = None) -> None:
                 status="finished",
                 pending_items=0,
             )
-    except Exception:
-        if job_id is not None and db is not None:
-            update_admin_job(
-                db,
-                job_id=job_id,
-                status="failed",
-                pending_items=0,
-                last_error="Failed to run sync-embeddings repair job",
-            )
+    except (
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        SQLAlchemyError,
+    ):
+        if job_id is not None:
+            status_db = db
+            try:
+                if status_db is None:
+                    status_db = SessionLocal()
+                update_admin_job(
+                    status_db,
+                    job_id=job_id,
+                    status="failed",
+                    pending_items=0,
+                    last_error="Failed to run sync-embeddings repair job",
+                )
+            except Exception:
+                logger.exception("Failed to persist sync-embeddings job failure status")
+            finally:
+                if db is None and status_db is not None and status_db is not db:
+                    status_db.close()
         logger.exception("Failed to run sync-embeddings repair job")
+    except Exception:
+        if job_id is not None:
+            status_db = db
+            try:
+                if status_db is None:
+                    status_db = SessionLocal()
+                update_admin_job(
+                    status_db,
+                    job_id=job_id,
+                    status="failed",
+                    pending_items=0,
+                    last_error="Failed to run sync-embeddings repair job",
+                )
+            except Exception:
+                logger.exception("Failed to persist sync-embeddings job failure status")
+            finally:
+                if db is None and status_db is not None and status_db is not db:
+                    status_db.close()
+        logger.exception("Failed to run sync-embeddings repair job")
+        raise
     finally:
         if db is not None:
             db.close()

@@ -5,7 +5,7 @@ import logging
 import httpx
 from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
 from sqlalchemy import func, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -279,7 +279,15 @@ async def start_reembed(job_id: str | None = None) -> None:
                             job.processed_items += 1
                     db.commit()
                     break
-                except Exception as exc:
+                except (
+                    RuntimeError,
+                    ConnectionError,
+                    TimeoutError,
+                    httpx.HTTPError,
+                    ApiException,
+                    ResponseHandlingException,
+                    SQLAlchemyError,
+                ) as exc:
                     note.synced = False
                     note.sync_status = "failed"
                     note.sync_last_error = str(exc)
@@ -306,6 +314,18 @@ async def start_reembed(job_id: str | None = None) -> None:
                         )
                         break
                     await asyncio.sleep(_compute_reembed_retry_delay(attempt))
+                except Exception as exc:
+                    note.synced = False
+                    note.sync_status = "failed"
+                    note.sync_last_error = str(exc)
+                    _reembed_state["failed"] += 1
+                    if job_id is not None:
+                        job = db.query(AdminJob).filter(AdminJob.id == job_id).first()
+                        if job is not None:
+                            job.failed_items += 1
+                            job.last_error = str(exc)
+                    db.commit()
+                    raise
 
         db.commit()
         _reembed_state["status"] = "finished"
@@ -318,6 +338,42 @@ async def start_reembed(job_id: str | None = None) -> None:
                 failed_items=_reembed_state["failed"],
                 pending_items=0,
             )
+    except (
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        httpx.HTTPError,
+        ApiException,
+        ResponseHandlingException,
+        SQLAlchemyError,
+    ) as exc:
+        _reembed_state["status"] = "failed"
+        if job_id is not None:
+            status_db = db
+            try:
+                if status_db is None:
+                    status_db = SessionLocal()
+                update_admin_job(
+                    status_db,
+                    job_id=job_id,
+                    status="failed",
+                    processed_items=_reembed_state["processed"],
+                    failed_items=_reembed_state["failed"],
+                    pending_items=0,
+                    last_error=str(exc),
+                )
+            except Exception:
+                logger.exception("Failed to persist admin re-embed failure status")
+            finally:
+                if db is None and status_db is not None and status_db is not db:
+                    status_db.close()
+        logger.exception(
+            "Async admin re-embed job failed",
+            extra={
+                "retry_attempt": 1,
+                "max_retries": ADMIN_REEMBED_MAX_RETRIES,
+            },
+        )
     except Exception as exc:
         _reembed_state["status"] = "failed"
         if job_id is not None:
@@ -334,6 +390,8 @@ async def start_reembed(job_id: str | None = None) -> None:
                     pending_items=0,
                     last_error=str(exc),
                 )
+            except Exception:
+                logger.exception("Failed to persist admin re-embed failure status")
             finally:
                 if db is None and status_db is not None and status_db is not db:
                     status_db.close()
@@ -344,6 +402,7 @@ async def start_reembed(job_id: str | None = None) -> None:
                 "max_retries": ADMIN_REEMBED_MAX_RETRIES,
             },
         )
+        raise
     finally:
         if db is not None:
             db.close()

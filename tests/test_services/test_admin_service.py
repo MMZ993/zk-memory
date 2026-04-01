@@ -275,7 +275,7 @@ async def test_start_reembed_updates_sync_state_metadata_on_terminal_failure(
 
 
 @pytest.mark.asyncio
-async def test_start_reembed_does_not_retry_non_retryable_error(monkeypatch):
+async def test_start_reembed_reraises_non_retryable_programming_error(monkeypatch):
     fake_db = MagicMock()
     fake_note = MagicMock(
         id="note-noretry",
@@ -306,14 +306,52 @@ async def test_start_reembed_does_not_retry_non_retryable_error(monkeypatch):
         "app.services.embedding_service.generate_embedding", generate_mock
     )
 
-    await admin_service.start_reembed()
+    with pytest.raises(ValueError, match="bad input"):
+        await admin_service.start_reembed()
 
     assert generate_mock.await_count == 1
-    assert admin_service._reembed_state["processed"] == 0
-    assert admin_service._reembed_state["failed"] == 1
-    assert fake_note.sync_attempts == 1
+    assert admin_service._reembed_state["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_start_reembed_marks_failed_and_reraises_unexpected_exception(
+    monkeypatch,
+):
+    fake_db = MagicMock()
+    fake_note = MagicMock(
+        id="note-assert",
+        title="T",
+        content="C",
+        synced=False,
+        sync_attempts=0,
+        sync_status="pending",
+        sync_last_error=None,
+        sync_last_attempt_at=None,
+        sync_last_success_at=None,
+    )
+    fake_db.query.return_value.all.return_value = [fake_note]
+    admin_service._reembed_state.update(
+        {"status": "queued", "total": 1, "processed": 0, "failed": 0}
+    )
+
+    monkeypatch.setattr(admin_service, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(admin_service.client, "delete_collection", lambda _: None)
+    monkeypatch.setattr(admin_service, "init_qdrant", lambda: None)
+    monkeypatch.setattr(
+        "app.services.note_service._get_tag_names",
+        MagicMock(return_value=[]),
+    )
+    monkeypatch.setattr(
+        "app.services.embedding_service.generate_embedding",
+        AsyncMock(side_effect=AssertionError("unexpected assertion")),
+    )
+
+    with pytest.raises(AssertionError, match="unexpected assertion"):
+        await admin_service.start_reembed()
+
+    assert admin_service._reembed_state["status"] == "failed"
     assert fake_note.sync_status == "failed"
-    assert fake_note.sync_last_error == "bad input"
+    assert fake_note.sync_last_error == "unexpected assertion"
 
 
 @pytest.mark.asyncio
@@ -409,3 +447,24 @@ async def test_start_reembed_persists_terminal_failure_when_session_creation_fai
     persisted = db.query(AdminJob).filter(AdminJob.id == job_id).one()
     assert persisted.status == "failed"
     assert persisted.last_error == "db unavailable"
+
+
+@pytest.mark.asyncio
+async def test_start_reembed_does_not_raise_when_failure_status_persistence_fails(
+    db, monkeypatch
+):
+    job = admin_service.create_admin_job(db, job_type=admin_service.JOB_TYPE_REEMBED)
+    job_id = job.id
+
+    monkeypatch.setattr(
+        admin_service,
+        "SessionLocal",
+        MagicMock(
+            side_effect=[
+                RuntimeError("db unavailable"),
+                RuntimeError("status db unavailable"),
+            ]
+        ),
+    )
+
+    await admin_service.start_reembed(job_id)

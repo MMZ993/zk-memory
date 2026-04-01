@@ -1,6 +1,7 @@
 import pytest
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
+from unittest.mock import AsyncMock, MagicMock
 
 from app.services.admin_service import _reembed_state, start_reembed
 
@@ -236,6 +237,24 @@ def test_sync_embeddings_endpoint_reraises_unexpected_enqueue_errors(
     assert admin_api._sync_embeddings_state["status"] == "idle"
 
 
+def test_sync_embeddings_endpoint_resets_state_for_unexpected_assertion_error(
+    client, monkeypatch
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "idle", "pending_notes": 0})
+
+    def _raise_add_task(self, func, *args, **kwargs):
+        raise AssertionError("unexpected assertion error")
+
+    monkeypatch.setattr(BackgroundTasks, "add_task", _raise_add_task)
+
+    with pytest.raises(AssertionError, match="unexpected assertion error"):
+        client.post("/api/admin/sync-embeddings")
+
+    assert admin_api._sync_embeddings_state["status"] == "idle"
+
+
 @pytest.mark.asyncio
 async def test_sync_embeddings_background_job_handles_session_creation_failure(
     monkeypatch,
@@ -254,6 +273,87 @@ async def test_sync_embeddings_background_job_handles_session_creation_failure(
 
     assert admin_api._sync_embeddings_state["status"] == "idle"
     assert admin_api._sync_embeddings_state["pending_notes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_embeddings_background_job_persists_failed_status_when_session_creation_fails(
+    monkeypatch,
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "queued", "pending_notes": 5})
+    status_db = MagicMock()
+    update_job = MagicMock()
+
+    monkeypatch.setattr(
+        admin_api,
+        "SessionLocal",
+        MagicMock(side_effect=[RuntimeError("db unavailable"), status_db]),
+    )
+    monkeypatch.setattr(admin_api, "update_admin_job", update_job)
+
+    await admin_api._run_sync_embeddings_job("job-status")
+
+    update_job.assert_called_with(
+        status_db,
+        job_id="job-status",
+        status="failed",
+        pending_items=0,
+        last_error="Failed to run sync-embeddings repair job",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sync_embeddings_background_job_reraises_unexpected_errors(
+    monkeypatch,
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "queued", "pending_notes": 5})
+    fake_db = MagicMock()
+
+    monkeypatch.setattr(admin_api, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(
+        admin_api,
+        "sync_unsynced_notes",
+        AsyncMock(side_effect=ValueError("unexpected sync bug")),
+    )
+
+    with pytest.raises(ValueError, match="unexpected sync bug"):
+        await admin_api._run_sync_embeddings_job("job-1")
+
+    assert admin_api._sync_embeddings_state["status"] == "idle"
+    assert admin_api._sync_embeddings_state["pending_notes"] == 0
+
+
+@pytest.mark.asyncio
+async def test_sync_embeddings_background_job_marks_failed_and_reraises_unexpected_exception(
+    monkeypatch,
+):
+    from app.api import admin as admin_api
+
+    admin_api._sync_embeddings_state.update({"status": "queued", "pending_notes": 5})
+    fake_db = MagicMock()
+    update_job = MagicMock()
+
+    monkeypatch.setattr(admin_api, "SessionLocal", lambda: fake_db)
+    monkeypatch.setattr(admin_api, "update_admin_job", update_job)
+    monkeypatch.setattr(
+        admin_api,
+        "sync_unsynced_notes",
+        AsyncMock(side_effect=AssertionError("unexpected assertion")),
+    )
+
+    with pytest.raises(AssertionError, match="unexpected assertion"):
+        await admin_api._run_sync_embeddings_job("job-2")
+
+    update_job.assert_called_with(
+        fake_db,
+        job_id="job-2",
+        status="failed",
+        pending_items=0,
+        last_error="Failed to run sync-embeddings repair job",
+    )
 
 
 def test_health_check(client):
