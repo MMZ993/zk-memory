@@ -3,12 +3,15 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
 )
 
 var pretty bool
+var stderrWriter io.Writer = os.Stderr
+var exitFn = os.Exit
 
 var rootCmd = &cobra.Command{
 	Use:   "memory",
@@ -36,13 +39,7 @@ func init() {
 
 // printJSON writes v as compact JSON to stdout, or pretty if --pretty is set.
 func printJSON(v any) {
-	var b []byte
-	var err error
-	if pretty {
-		b, err = json.MarshalIndent(v, "", "  ")
-	} else {
-		b, err = json.Marshal(v)
-	}
+	b, err := renderJSON(v, pretty)
 	if err != nil {
 		fatal("encode output: %v", err)
 	}
@@ -51,23 +48,44 @@ func printJSON(v any) {
 
 // printRawJSON writes a json.RawMessage to stdout, pretty-printing if --pretty is set.
 func printRawJSON(raw []byte) {
-	if pretty {
-		var v any
-		if err := json.Unmarshal(raw, &v); err != nil {
-			fatal("decode output: %v", err)
-		}
-		b, err := json.MarshalIndent(v, "", "  ")
-		if err != nil {
-			fatal("encode output: %v", err)
-		}
-		fmt.Println(string(b))
-		return
+	b, err := renderRawJSON(raw, pretty)
+	if err != nil {
+		fatal("%v", err)
 	}
-	fmt.Println(string(raw))
+	fmt.Println(string(b))
 }
 
 // fatal writes msg to stderr and exits 1.
 func fatal(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "error: "+format+"\n", args...)
-	os.Exit(1)
+	fmt.Fprint(stderrWriter, formatFatalMessage(format, args...))
+	exitFn(1)
+}
+
+func formatFatalMessage(format string, args ...any) string {
+	return fmt.Sprintf("error: "+format+"\n", args...)
+}
+
+func renderJSON(v any, pretty bool) ([]byte, error) {
+	if pretty {
+		return json.MarshalIndent(v, "", "  ")
+	}
+	return json.Marshal(v)
+}
+
+func renderRawJSON(raw []byte, pretty bool) ([]byte, error) {
+	if !pretty {
+		return raw, nil
+	}
+
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return nil, fmt.Errorf("decode output: %w", err)
+	}
+
+	b, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("encode output: %w", err)
+	}
+
+	return b, nil
 }

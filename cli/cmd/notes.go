@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 
 	"agents-memory-cli/internal/client"
@@ -56,8 +57,8 @@ var notesCreateCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a note",
 	Run: func(cmd *cobra.Command, args []string) {
-		if createTitle == "" || createContent == "" {
-			fatal("--title and --content are required")
+		if err := validateNotesCreateInput(createTitle, createContent); err != nil {
+			fatal("%v", err)
 		}
 		c, err := client.New()
 		if err != nil {
@@ -205,6 +206,13 @@ func splitTagsOpt(s string) []string {
 		return nil
 	}
 	return splitTags(s)
+}
+
+func validateNotesCreateInput(title string, content string) error {
+	if title == "" || content == "" {
+		return fmt.Errorf("--title and --content are required")
+	}
+	return nil
 }
 
 func init() {

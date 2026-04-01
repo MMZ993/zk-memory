@@ -13,6 +13,8 @@ var bufferCmd = &cobra.Command{
 	Short: "Manage buffer notes",
 }
 
+var newBufferClient = client.New
+
 // ---------- add ----------
 
 var (
@@ -28,7 +30,7 @@ var bufferAddCmd = &cobra.Command{
 		if bufferAddContent == "" {
 			fatal("--content is required")
 		}
-		c, err := client.New()
+		c, err := newBufferClient()
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -57,31 +59,26 @@ var bufferAddCmd = &cobra.Command{
 // ---------- list ----------
 
 var (
-	bufferListProcessed    bool
-	bufferListUnprocessed  bool
-	bufferListLimit        int
-	bufferListOffset       int
+	bufferListProcessed   bool
+	bufferListUnprocessed bool
+	bufferListLimit       int
+	bufferListOffset      int
 )
 
 var bufferListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List buffer notes",
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.New()
+		opts, err := buildBufferListOpts(bufferListProcessed, bufferListUnprocessed, bufferListLimit, bufferListOffset)
 		if err != nil {
 			fatal("%v", err)
 		}
-		opts := client.BufferListOpts{
-			Limit:  bufferListLimit,
-			Offset: bufferListOffset,
+
+		c, err := newBufferClient()
+		if err != nil {
+			fatal("%v", err)
 		}
-		if bufferListProcessed && !bufferListUnprocessed {
-			t := true
-			opts.Processed = &t
-		} else if bufferListUnprocessed && !bufferListProcessed {
-			f := false
-			opts.Processed = &f
-		}
+
 		notes, err := c.ListBuffer(opts)
 		if err != nil {
 			fatal("%v", err)
@@ -97,7 +94,7 @@ var bufferGetCmd = &cobra.Command{
 	Short: "Get a buffer note by ID",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.New()
+		c, err := newBufferClient()
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -116,7 +113,7 @@ var bufferDeleteCmd = &cobra.Command{
 	Short: "Delete a buffer note",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.New()
+		c, err := newBufferClient()
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -134,7 +131,7 @@ var bufferProcessCmd = &cobra.Command{
 	Short: "Mark a buffer note as processed",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.New()
+		c, err := newBufferClient()
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -152,7 +149,7 @@ var bufferCleanupCmd = &cobra.Command{
 	Use:   "cleanup",
 	Short: "Delete old processed buffer notes",
 	Run: func(cmd *cobra.Command, args []string) {
-		c, err := client.New()
+		c, err := newBufferClient()
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -174,6 +171,34 @@ var bufferCleanupCmd = &cobra.Command{
 	},
 }
 
+func resolveProcessedFilter(processed bool, unprocessed bool) (*bool, error) {
+	if processed && unprocessed {
+		return nil, fmt.Errorf("--processed and --unprocessed are mutually exclusive")
+	}
+	if processed {
+		t := true
+		return &t, nil
+	}
+	if unprocessed {
+		f := false
+		return &f, nil
+	}
+	return nil, nil
+}
+
+func buildBufferListOpts(processed bool, unprocessed bool, limit int, offset int) (client.BufferListOpts, error) {
+	processedFilter, err := resolveProcessedFilter(processed, unprocessed)
+	if err != nil {
+		return client.BufferListOpts{}, err
+	}
+
+	return client.BufferListOpts{
+		Processed: processedFilter,
+		Limit:     limit,
+		Offset:    offset,
+	}, nil
+}
+
 func init() {
 	// add flags
 	bufferAddCmd.Flags().StringVar(&bufferAddContent, "content", "", "Buffer note content (required)")
@@ -181,8 +206,8 @@ func init() {
 	bufferAddCmd.Flags().StringVar(&bufferAddMeta, "meta", "", "Raw JSON metadata (overrides --source)")
 
 	// list flags
-	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes")
-	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes")
+	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes (mutually exclusive with --unprocessed)")
+	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes (mutually exclusive with --processed)")
 	bufferListCmd.Flags().IntVar(&bufferListLimit, "limit", 0, "Max results")
 	bufferListCmd.Flags().IntVar(&bufferListOffset, "offset", 0, "Pagination offset")
 
