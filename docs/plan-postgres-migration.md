@@ -106,7 +106,7 @@ services:
 2. ✅ `alembic/env.py` — guard pragma listener behind SQLite check
 3. ✅ `alembic/versions/d584390723bb` — make FTS5 section dialect-aware; add PostgreSQL `tsvector` path
 4. ✅ `search_service.py` — branch keyword search on `settings.db_backend`
-5. ✅ `pyproject.toml` + `requirements.txt` — `psycopg[binary]>=3.1.0` (psycopg3, not psycopg2)
+5. ✅ `pyproject.toml` + `uv.lock` — `psycopg[binary]>=3.1.0` (psycopg3, not psycopg2)
 6. ✅ `docker-compose.postgres.yml` — PostgreSQL + Qdrant compose file
 7. ✅ `.env.example` — `DB_BACKEND` + `postgresql+psycopg://` example (URL scheme required for psycopg3)
 8. ✅ Integration tests — `docker-compose.test.postgres.yml` + `make test-integration-postgres`; 48/48 pass

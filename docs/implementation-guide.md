@@ -7,7 +7,7 @@ Step-by-step implementation guide for AI Agent Memory System.
 This guide walks through implementing the AI Agent Memory System in phases.
 
 **Prerequisites**:
-- Python 3.11+
+- Python 3.13+
 - Docker (for Qdrant)
 - OpenAI API key (or use local embeddings)
 
@@ -50,43 +50,39 @@ touch app/core/__init__.py
 touch tests/__init__.py
 ```
 
-### 1.3 Create requirements.txt
+### 1.3 Define dependencies in pyproject.toml
 
 ```bash
-cat > requirements.txt << EOF
-# Web Framework
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-python-multipart==0.0.6
+cat > pyproject.toml << EOF
+[project]
+name = "agents-memory"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi",
+  "uvicorn[standard]",
+  "python-multipart",
+  "sqlalchemy",
+  "alembic",
+  "qdrant-client",
+  "openai",
+  "python-dotenv",
+  "pydantic",
+  "pydantic-settings",
+  "httpx",
+]
 
-# Database
-sqlalchemy==2.0.23
-alembic==1.12.1
-
-# Vector Database
-qdrant-client==1.7.0
-
-# Embeddings
-openai==1.3.7
-# OR local: sentence-transformers==2.2.2
-
-# Utilities
-python-dotenv==1.0.0
-pydantic==2.5.0
-pydantic-settings==2.1.0
-
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.21.1
-httpx==0.25.2
-
-# Development
-black==23.11.0
-isort==5.12.0
-mypy==1.7.1
+[dependency-groups]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "black",
+  "isort",
+  "mypy",
+]
 EOF
 
-pip install -r requirements.txt
+uv sync
 ```
 
 ### 1.4 Create .env.example
@@ -172,7 +168,7 @@ services:
 EOF
 
 cat > Dockerfile << EOF
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -180,8 +176,11 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
+RUN uv sync --frozen --no-dev
 
 COPY . .
 
@@ -189,7 +188,7 @@ RUN mkdir -p /app/data
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 EOF
 ```
 
@@ -1292,10 +1291,10 @@ rm data/memory.db
 
 ```bash
 # Ensure all dependencies installed
-pip install -r requirements.txt
+uv sync
 
 # Check Python version
-python --version  # Should be 3.11+
+python --version  # Should be 3.13+
 ```
 
 ## Summary

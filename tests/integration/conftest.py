@@ -2,11 +2,11 @@
 Integration test configuration — real running API via Docker.
 
 Run with:
-    INTEGRATION_TESTS=1 pytest tests/integration/ -v
+    INTEGRATION_TESTS=1 uv run pytest tests/integration/ -v
 
 The test stack must be running before executing tests:
     docker compose -f docker-compose.test.yml up -d --build
-    INTEGRATION_TESTS=1 pytest tests/integration/ -v
+    INTEGRATION_TESTS=1 uv run pytest tests/integration/ -v
     docker compose -f docker-compose.test.yml down -v
 
 Or use the Makefile shortcut:
@@ -32,6 +32,7 @@ API_URL = os.getenv("MEMORY_API_URL", "http://localhost:8001")
 
 # ── Guard: skip entire directory unless INTEGRATION_TESTS=1 ──────────────────
 
+
 def pytest_collection_modifyitems(config, items):
     if os.getenv("INTEGRATION_TESTS"):
         return
@@ -42,6 +43,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _wait_for_api(url: str, timeout: int = 60) -> None:
     """Poll /health until the API is ready or timeout expires."""
@@ -54,7 +56,9 @@ def _wait_for_api(url: str, timeout: int = 60) -> None:
         except httpx.ConnectError:
             pass
         time.sleep(2)
-    pytest.skip(f"API at {url}/api/health did not respond within {timeout}s — is the test stack running?")
+    pytest.skip(
+        f"API at {url}/api/health did not respond within {timeout}s — is the test stack running?"
+    )
 
 
 def _wipe_data(client: httpx.Client) -> None:
@@ -81,6 +85,7 @@ def _wipe_data(client: httpx.Client) -> None:
 
 # ── Session-scoped seeded client ──────────────────────────────────────────────
 
+
 @pytest.fixture(scope="session")
 def seeded_client():
     """
@@ -98,6 +103,7 @@ def seeded_client():
     _wipe_data(client)
 
     from tests.integration.fixtures import seed_data
+
     note_ids = seed_data(client)
 
     yield client, note_ids
@@ -106,6 +112,7 @@ def seeded_client():
 
 
 # ── Convenience aliases used by test modules ──────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def client(seeded_client):

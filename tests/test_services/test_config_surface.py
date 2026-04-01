@@ -86,3 +86,29 @@ def test_sync_state_columns_exist_in_model_and_migration_surface():
         "UPDATE notes SET sync_status = 'synced' WHERE synced IS TRUE"
         in migration_content
     )
+
+
+def test_docs_and_scripts_do_not_reference_legacy_dependency_workflow():
+    disallowed_tokens = (
+        "requirements.txt",
+        "pip install",
+        "INTEGRATION_TESTS=1 pytest",
+    )
+    paths = (
+        "README.md",
+        "NEXT_SESSION.md",
+        "PROGRESS.md",
+        "docker-compose.test.yml",
+        "docs/configuration.md",
+        "docs/implementation-guide.md",
+        "docs/plan-postgres-migration.md",
+        "docs/project-structure.md",
+        "docs/testing-plan.md",
+        "scripts/reset_integration.sh",
+        "tests/integration/conftest.py",
+    )
+
+    for path in paths:
+        content = Path(path).read_text()
+        for token in disallowed_tokens:
+            assert token not in content, f"{path} still references {token}"

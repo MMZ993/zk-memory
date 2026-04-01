@@ -42,7 +42,7 @@ Test the full stack against a real running API (not in-process).
 make test-integration
 # or manually:
 docker compose -f docker-compose.test.yml up -d --build
-INTEGRATION_TESTS=1 pytest tests/integration/ -v
+INTEGRATION_TESTS=1 uv run pytest tests/integration/ -v
 docker compose -f docker-compose.test.yml down -v
 ```
 
@@ -490,32 +490,32 @@ def test_backup_restore_workflow(client, db):
 
 ```bash
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run with coverage
-pytest tests/ --cov=app --cov-report=html
+uv run pytest tests/ --cov=app --cov-report=html
 
 # Run specific test file
-pytest tests/test_api/test_notes.py -v
+uv run pytest tests/test_api/test_notes.py -v
 
 # Run specific test
-pytest tests/test_api/test_notes.py::test_create_note -v
+uv run pytest tests/test_api/test_notes.py::test_create_note -v
 ```
 
 ### Run by Category
 
 ```bash
 # Unit tests only
-pytest tests/test_utils/ tests/test_services/ -v
+uv run pytest tests/test_utils/ tests/test_services/ -v
 
 # Integration tests only
-pytest tests/test_api/ -v
+uv run pytest tests/test_api/ -v
 
 # E2E tests only
-pytest tests/test_e2e/ -v -m e2e
+uv run pytest tests/test_e2e/ -v -m e2e
 
 # Fast tests (skip slow ones)
-pytest tests/ -m "not slow"
+uv run pytest tests/ -m "not slow"
 ```
 
 ### CI/CD Integration
@@ -540,19 +540,19 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
+          python-version: '3.13'
+      - uses: astral-sh/setup-uv@v6
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest pytest-cov pytest-asyncio httpx
+          uv sync --frozen
 
       - name: Run tests
         env:
           EMBEDDING_PROVIDER=openai
           OPENAI_API_KEY=test-key
         run: |
-          pytest tests/ --cov=app --cov-report=xml
+          uv run pytest tests/ --cov=app --cov-report=xml
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3

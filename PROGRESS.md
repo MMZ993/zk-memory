@@ -89,7 +89,7 @@ Dialect-aware SQLite + PostgreSQL support. `DB_BACKEND=sqlite|postgres` env var 
 - `alembic/env.py` — pragma listener guarded behind SQLite check
 - `alembic/versions/d584390723bb` — `op.get_bind().dialect.name` branch: SQLite → FTS5 virtual table + triggers; PostgreSQL → `search_vector tsvector` column + GIN index + trigger function
 - `search_service.py` — `search_keyword()` branches on `db_backend`: SQLite uses FTS5 MATCH, PostgreSQL uses `plainto_tsquery('english', ...)` + `ts_rank`
-- `requirements.txt` + `pyproject.toml` — `psycopg[binary]>=3.1.0` (psycopg3; requires `postgresql+psycopg://` URL scheme)
+- `pyproject.toml` + `uv.lock` — `psycopg[binary]>=3.1.0` (psycopg3; requires `postgresql+psycopg://` URL scheme)
 - `docker-compose.postgres.yml` — production compose: PostgreSQL 16 + Qdrant, healthcheck before app starts
 - `docker-compose.test.postgres.yml` — isolated test stack (API: 8002, PG: 5433, Qdrant: 6335)
 - `Makefile` — `test-integration-postgres` / `test-integration-postgres-down` targets

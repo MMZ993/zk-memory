@@ -7,7 +7,8 @@ Directory layout, file organization, and bash scripts for AI Agent Memory System
 ```
 agents_memory/
 ├── README.md
-├── requirements.txt
+├── pyproject.toml
+├── uv.lock
 ├── .env.example
 ├── .env                    # Configuration (not in git)
 ├── Dockerfile
@@ -103,7 +104,7 @@ agents_memory/
 |---------------|---------|
 | `main.py` | FastAPI application entry point, route registration |
 | `app/core/config.py` | Load and validate all environment variables (pydantic-settings) |
-| `requirements.txt` | Python dependencies |
+| `pyproject.toml` + `uv.lock` | Python dependencies |
 
 ### Documentation
 
@@ -333,7 +334,7 @@ python -m venv venv
 source venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Copy environment file
 cp .env.example .env

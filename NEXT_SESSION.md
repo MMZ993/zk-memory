@@ -18,7 +18,7 @@ Implemented full dialect-aware SQLite + PostgreSQL support on branch `feat/postg
 - `alembic/env.py` — pragma listener guarded behind SQLite check
 - `alembic/versions/d584390723bb` — FTS5 path (SQLite) vs tsvector+GIN+trigger path (PostgreSQL)
 - `src/app/services/search_service.py` — keyword search branches on `db_backend`
-- `requirements.txt` + `pyproject.toml` — `psycopg[binary]>=3.1.0`
+- `pyproject.toml` + `uv.lock` — `psycopg[binary]>=3.1.0`
 - `.env.example` + `docker-compose.yml` — `DB_BACKEND` added
 - `docker-compose.postgres.yml` — production PostgreSQL + Qdrant compose
 - `docker-compose.test.postgres.yml` — isolated test stack (API: 8002, PG: 5433, Qdrant: 6335)

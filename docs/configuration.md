@@ -302,7 +302,7 @@ services:
 ### Dockerfile
 
 ```dockerfile
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -311,9 +311,12 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install Python dependencies with uv lockfile
+COPY pyproject.toml uv.lock ./
+COPY src/ src/
+RUN uv sync --frozen --no-dev
 
 # Copy application
 COPY . .
@@ -325,7 +328,7 @@ RUN mkdir -p /app/data
 EXPOSE 8000
 
 # Run application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ## Development Configuration

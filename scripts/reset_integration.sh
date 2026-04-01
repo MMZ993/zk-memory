@@ -38,4 +38,4 @@ case "$HTTP_STATUS" in
 esac
 
 echo "==> Done. Run tests with:"
-echo "    INTEGRATION_TESTS=1 pytest tests/integration/ -v"
+echo "    INTEGRATION_TESTS=1 uv run pytest tests/integration/ -v"
