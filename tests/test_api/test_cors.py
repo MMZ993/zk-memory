@@ -1,6 +1,9 @@
 import importlib
+from unittest.mock import AsyncMock, Mock
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import SQLAlchemyError
 
 
 _CORS_ENV_KEYS = (
@@ -182,3 +185,71 @@ def test_cors_env_override_applies_methods_and_headers(monkeypatch):
     assert allowed.status_code == 200
     assert blocked_method.status_code == 400
     assert blocked_header.status_code == 400
+
+
+def test_startup_retries_db_init_after_transient_failure(monkeypatch):
+    app = _reload_app_with_env(monkeypatch, {})
+
+    attempts = {"count": 0}
+    sleep_mock = AsyncMock()
+
+    def _flaky_init_db():
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise SQLAlchemyError("temporary db startup failure")
+
+    monkeypatch.setattr("main.init_db", _flaky_init_db)
+    monkeypatch.setattr("main.init_qdrant", Mock())
+    monkeypatch.setattr("main.asyncio.sleep", sleep_mock)
+
+    with TestClient(app) as client:
+        r = client.get("/api/health")
+
+    assert r.status_code == 200
+    assert attempts["count"] == 2
+    assert sleep_mock.await_count == 1
+
+
+def test_startup_retries_qdrant_init_after_transient_failure(monkeypatch):
+    app = _reload_app_with_env(monkeypatch, {})
+
+    attempts = {"count": 0}
+    sleep_mock = AsyncMock()
+
+    def _flaky_init_qdrant():
+        attempts["count"] += 1
+        if attempts["count"] == 1:
+            raise ConnectionError("temporary qdrant startup failure")
+
+    monkeypatch.setattr("main.init_db", Mock())
+    monkeypatch.setattr("main.init_qdrant", _flaky_init_qdrant)
+    monkeypatch.setattr("main.asyncio.sleep", sleep_mock)
+
+    with TestClient(app) as client:
+        r = client.get("/api/health")
+
+    assert r.status_code == 200
+    assert attempts["count"] == 2
+    assert sleep_mock.await_count == 1
+
+
+def test_startup_db_init_stops_after_max_attempts(monkeypatch):
+    app = _reload_app_with_env(monkeypatch, {})
+
+    attempts = {"count": 0}
+    sleep_mock = AsyncMock()
+
+    def _always_fail_init_db():
+        attempts["count"] += 1
+        raise SQLAlchemyError("persistent db startup failure")
+
+    monkeypatch.setattr("main.init_db", _always_fail_init_db)
+    monkeypatch.setattr("main.init_qdrant", Mock())
+    monkeypatch.setattr("main.asyncio.sleep", sleep_mock)
+
+    with pytest.raises(SQLAlchemyError, match="persistent db startup failure"):
+        with TestClient(app):
+            pass
+
+    assert attempts["count"] == 3
+    assert sleep_mock.await_count == 2

@@ -183,6 +183,97 @@ def test_health_check(client):
     assert "version" in data
 
 
+def test_readiness_check(client):
+    r = client.get("/api/readiness")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["status"] == "ready"
+    assert data["dependencies"]["database"] == "ok"
+    assert data["dependencies"]["qdrant"] == "ok"
+
+
+def test_readiness_check_returns_503_when_qdrant_unavailable(client, monkeypatch):
+    import main as main_module
+
+    def _raise_qdrant_error(*args, **kwargs):
+        raise ConnectionError("qdrant unavailable")
+
+    monkeypatch.setattr(
+        main_module.qdrant_db.client, "collection_exists", _raise_qdrant_error
+    )
+
+    r = client.get("/api/readiness")
+
+    assert r.status_code == 503
+    data = r.json()
+    assert data["status"] == "not_ready"
+    assert data["dependencies"]["database"] == "ok"
+    assert data["dependencies"]["qdrant"] == "error"
+
+
+def test_readiness_check_returns_503_when_qdrant_collection_missing(
+    client, monkeypatch
+):
+    import main as main_module
+
+    monkeypatch.setattr(
+        main_module.qdrant_db.client,
+        "collection_exists",
+        lambda *_args, **_kwargs: False,
+    )
+
+    r = client.get("/api/readiness")
+
+    assert r.status_code == 503
+    data = r.json()
+    assert data["status"] == "not_ready"
+    assert data["dependencies"]["qdrant"] == "error"
+
+
+def test_readiness_check_uses_dependency_injected_db_session(client, monkeypatch):
+    from app.api import deps as deps_module
+
+    def _should_not_be_called():
+        raise AssertionError(
+            "SessionLocal should not be called when get_db is overridden"
+        )
+
+    monkeypatch.setattr(deps_module, "SessionLocal", _should_not_be_called)
+
+    r = client.get("/api/readiness")
+
+    assert r.status_code == 200
+
+
+def test_readiness_check_returns_503_when_database_unavailable(client):
+    from sqlalchemy.exc import SQLAlchemyError
+
+    import main as main_module
+    from app.api.deps import get_db
+
+    class _BrokenDb:
+        def execute(self, *_args, **_kwargs):
+            raise SQLAlchemyError("database unavailable")
+
+    def _broken_db_override():
+        yield _BrokenDb()
+
+    previous_override = main_module.app.dependency_overrides.get(get_db)
+    main_module.app.dependency_overrides[get_db] = _broken_db_override
+    try:
+        r = client.get("/api/readiness")
+    finally:
+        if previous_override is None:
+            main_module.app.dependency_overrides.pop(get_db, None)
+        else:
+            main_module.app.dependency_overrides[get_db] = previous_override
+
+    assert r.status_code == 503
+    data = r.json()
+    assert data["status"] == "not_ready"
+    assert data["dependencies"]["database"] == "error"
+
+
 def test_stats_structure(client):
     r = client.get("/api/stats")
     assert r.status_code == 200
