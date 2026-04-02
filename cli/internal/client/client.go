@@ -88,15 +88,18 @@ func (c *Client) do(method, path string, body any, out any) error {
 		return fmt.Errorf("read response: %w", err)
 	}
 
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			if resp.StatusCode < 400 {
+				return fmt.Errorf("decode response: %w", err)
+			}
+		}
+	}
+
 	if resp.StatusCode >= 400 {
 		return &APIError{StatusCode: resp.StatusCode, Body: string(respBody)}
 	}
 
-	if out != nil {
-		if err := json.Unmarshal(respBody, out); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
 	return nil
 }
 

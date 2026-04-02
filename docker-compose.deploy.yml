@@ -1,0 +1,61 @@
+services:
+  agents-memory:
+    image: ${IMAGE_REF}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      DB_BACKEND: postgres
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-}
+      CORS_ALLOW_ORIGIN_REGEX: ${CORS_ALLOW_ORIGIN_REGEX:-^https?://(localhost|127\.0\.0\.1)(:\d+)?$}
+      CORS_ALLOW_METHODS: ${CORS_ALLOW_METHODS:-*}
+      CORS_ALLOW_HEADERS: ${CORS_ALLOW_HEADERS:-*}
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-notes_embeddings}
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-768}
+      EMBEDDING_TASK_PREFIX: ${EMBEDDING_TASK_PREFIX:-true}
+      OLLAMA_HOST: ${OLLAMA_HOST}
+      NOTE_MAX_CONTENT_LENGTH: ${NOTE_MAX_CONTENT_LENGTH:-2048}
+      BUFFER_RETENTION_DAYS: ${BUFFER_RETENTION_DAYS:-7}
+      MARKDOWN_DIR: /app/data/notes
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      MEMORY_API_KEY_READ: ${MEMORY_API_KEY_READ:-}
+      MEMORY_API_KEY_BUFFER: ${MEMORY_API_KEY_BUFFER:-}
+      MEMORY_API_KEY_WRITE: ${MEMORY_API_KEY_WRITE:-}
+      MEMORY_API_KEY_DUMP: ${MEMORY_API_KEY_DUMP:-}
+      MEMORY_API_KEY_ADMIN: ${MEMORY_API_KEY_ADMIN:-}
+    volumes:
+      - ${APP_DATA_DIR:-./data}:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ${POSTGRES_DATA_DIR:-./postgres_data}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:-}
+    volumes:
+      - ${QDRANT_DATA_DIR:-./qdrant_storage}:/qdrant/storage
+    restart: unless-stopped
