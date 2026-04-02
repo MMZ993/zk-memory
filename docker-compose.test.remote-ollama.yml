@@ -1,0 +1,40 @@
+# Integration test stack with REMOTE OLLAMA at https://ollama.mmz.sh/
+#
+# Usage:
+#   docker compose -f docker-compose.test.remote-ollama.yml up -d --build
+#   export MEMORY_API_URL=http://localhost:8001
+#   ./cli/dist/memory admin health --pretty
+#   docker compose -f docker-compose.test.remote-ollama.yml down -v
+
+services:
+  agents-memory-test:
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./data/test.db
+      - QDRANT_HOST=qdrant-test
+      - QDRANT_PORT=6333
+      - QDRANT_COLLECTION=test_memory
+      - EMBEDDING_MODEL=nomic-embed-text
+      - EMBEDDING_DIMENSION=768
+      - OLLAMA_HOST=https://ollama.mmz.sh
+      - BUFFER_RETENTION_DAYS=7
+      - LOG_LEVEL=INFO
+    volumes:
+      - test_data:/app/data
+    depends_on:
+      - qdrant-test
+    restart: "no"
+
+  qdrant-test:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6334:6333"
+    volumes:
+      - test_qdrant:/qdrant/storage
+    restart: "no"
+
+volumes:
+  test_data:
+  test_qdrant:
