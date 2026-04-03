@@ -33,7 +33,6 @@ python_tests:
     - uv sync --frozen --extra dev
     - uv run python -m pytest tests/test_services/ tests/test_api/ -v
   rules:
-    - if: $CI_COMMIT_TAG
     - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main"'
       changes: *ci_relevant_changes
 
@@ -43,7 +42,6 @@ cli_tests:
     - cd cli
     - go test ./...
   rules:
-    - if: $CI_COMMIT_TAG
     - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main"'
       changes: *ci_relevant_changes
 
@@ -64,7 +62,6 @@ integration_postgres:
   after_script:
     - docker compose -f docker-compose.test.postgres.yml down -v
   rules:
-    - if: $CI_COMMIT_TAG
     - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main"'
       changes: *ci_relevant_changes
 
@@ -85,28 +82,28 @@ build_cli_artifact:
       - cli/dist/memory-cli-linux-amd64-*.tar.gz
     expire_in: 14 days
   rules:
-    - if: $CI_COMMIT_TAG
     - if: '$CI_COMMIT_BRANCH == "main"'
       changes: *ci_relevant_changes
 
 publish_image:
   stage: publish
   needs:
-    - build_cli_artifact
-    - integration_postgres
+    - job: build_cli_artifact
+      optional: true
+    - job: integration_postgres
+      optional: true
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
-    - docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
-    - docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
-    - |
-      if [ -n "${CI_COMMIT_BRANCH:-}" ]; then
-        docker tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
-        docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
-      fi
     - |
       if [ -n "${CI_COMMIT_TAG:-}" ]; then
+        docker pull "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
         docker tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
         docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
+      else
+        docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" .
+        docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA"
+        docker tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
+        docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG"
       fi
     - printf "IMAGE_REF=%s\nIMAGE_TAG=%s\n" "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" "$CI_COMMIT_SHA" > build.env
   artifacts:
