@@ -13,6 +13,7 @@ The GitLab pipeline runs in this order:
    - `build_cli_artifact`
 4. `publish`
    - `publish_image`
+   - `publish_cli_package` (tag pipelines)
 
 ## Required Runner Capabilities
 
@@ -34,6 +35,7 @@ The job also exports a dotenv artifact (`build.env`) with:
 
 - `IMAGE_REF`
 - `IMAGE_TAG`
+- `CLI_ARTIFACT_URL` (tag pipelines)
 
 ## CLI Artifact Output
 
@@ -41,6 +43,12 @@ The `build_cli_artifact` job publishes CI artifacts:
 
 - `cli/dist/memory`
 - `cli/dist/memory-cli-linux-amd64-<short_sha>.tar.gz`
+
+Tag pipelines also upload the CLI tarball to GitLab Generic Package Registry:
+
+- package: `memory-cli`
+- version: `$CI_COMMIT_TAG`
+- file: `memory-cli-linux-amd64-$CI_COMMIT_TAG.tar.gz`
 
 ## Integration Test Stack
 
