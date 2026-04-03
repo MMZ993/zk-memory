@@ -43,11 +43,11 @@ integration_postgres:
     - export OLLAMA_HOST="${OLLAMA_HOST:-https://ollama.mmz.sh}"
     - uv sync --frozen --extra dev
     - docker compose -f docker-compose.test.postgres.yml up -d --build
-    - INTEGRATION_TESTS=1 MEMORY_API_URL=http://localhost:8002 uv run python -m pytest tests/integration/ -k "not auth" -v
+    - INTEGRATION_TESTS=1 MEMORY_API_URL=http://127.0.0.1:8002 uv run python -m pytest tests/integration/ -k "not auth" -v
     - cd cli
     - go build -o dist/memory .
     - cd ..
-    - MEMORY_API_URL=http://localhost:8002 CLI_BIN=./cli/dist/memory ./scripts/ci_smoke.sh
+    - MEMORY_API_URL=http://127.0.0.1:8002 CLI_BIN=./cli/dist/memory ./scripts/ci_smoke.sh
   after_script:
     - docker compose -f docker-compose.test.postgres.yml down -v
   rules:
