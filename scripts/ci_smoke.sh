@@ -5,6 +5,7 @@ trap 'echo "ci_smoke.sh failed at line $LINENO" >&2' ERR
 
 API_URL="${MEMORY_API_URL:-http://localhost:8002}"
 CLI_BIN="${CLI_BIN:-./cli/dist/memory}"
+HYBRID_SMOKE_QUERY="${HYBRID_SMOKE_QUERY:-mqtt broker}"
 
 if [ -x ".venv/bin/python" ]; then
   PYTHON_BIN=".venv/bin/python"
@@ -26,21 +27,29 @@ extract_id() {
   "$PYTHON_BIN" -c 'import json,sys; print(json.loads(sys.stdin.read())["id"])'
 }
 
-wait_for_hybrid_result() {
+run_hybrid_query() {
+  local query="$1"
+  local result
+  result="$(MEMORY_API_URL="$API_URL" "$CLI_BIN" notes search "$query" --mode hybrid --pretty)"
+  printf '%s' "$result" | "$PYTHON_BIN" -c 'import json,sys; data=json.loads(sys.stdin.read()); raise SystemExit(0 if isinstance(data.get("results"), list) else 1)'
+  printf '%s' "$result"
+}
+
+wait_for_keyword_result() {
   local query="$1"
   local attempts=10
   local sleep_seconds=2
   local i
   for ((i=1; i<=attempts; i++)); do
     local result
-    result="$(MEMORY_API_URL="$API_URL" "$CLI_BIN" notes search "$query" --mode hybrid --pretty)"
+    result="$(MEMORY_API_URL="$API_URL" "$CLI_BIN" notes search "$query" --mode keyword --pretty)"
     if printf '%s' "$result" | "$PYTHON_BIN" -c 'import json,sys; data=json.loads(sys.stdin.read()); raise SystemExit(0 if data.get("results") else 1)'; then
       printf '%s' "$result"
       return 0
     fi
     sleep "$sleep_seconds"
   done
-  echo "hybrid search did not return results for query: $query" >&2
+  echo "keyword search did not return results for query: $query" >&2
   return 1
 }
 
@@ -99,7 +108,8 @@ NOTE_B_JSON="$(MEMORY_API_URL="$API_URL" create_note "CI Smoke Note B" "CI smoke
 NOTE_A_ID="$(printf '%s' "$NOTE_A_JSON" | extract_id)"
 NOTE_B_ID="$(printf '%s' "$NOTE_B_JSON" | extract_id)"
 
-SEARCH_JSON="$(wait_for_hybrid_result "semantic anchor")"
+KEYWORD_JSON="$(wait_for_keyword_result "semantic anchor")"
+SEARCH_JSON="$(run_hybrid_query "$HYBRID_SMOKE_QUERY")"
 
 MEMORY_API_URL="$API_URL" "$CLI_BIN" notes links link --source "$NOTE_A_ID" --target "$NOTE_B_ID" --relation-type related_to >/dev/null
 
