@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+trap 'echo "ci_smoke.sh failed at line $LINENO" >&2' ERR
+
 API_URL="${MEMORY_API_URL:-http://localhost:8002}"
 CLI_BIN="${CLI_BIN:-./cli/dist/memory}"
 
@@ -38,6 +40,7 @@ wait_for_hybrid_result() {
     fi
     sleep "$sleep_seconds"
   done
+  echo "hybrid search did not return results for query: $query" >&2
   return 1
 }
 
@@ -55,6 +58,7 @@ wait_for_graph_result() {
     fi
     sleep "$sleep_seconds"
   done
+  echo "graph query did not return results for note: $note_id" >&2
   return 1
 }
 
@@ -69,6 +73,7 @@ delete_with_retry() {
     fi
     sleep "$sleep_seconds"
   done
+  echo "failed to delete note after retries: $note_id" >&2
   return 1
 }
 
@@ -82,6 +87,7 @@ wait_for_health() {
     fi
     sleep "$sleep_seconds"
   done
+  echo "health check did not pass for $API_URL" >&2
   return 1
 }
 

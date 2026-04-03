@@ -47,7 +47,7 @@ integration_postgres:
     - cd cli
     - go build -o dist/memory .
     - cd ..
-    - MEMORY_API_URL=http://127.0.0.1:8002 CLI_BIN=./cli/dist/memory ./scripts/ci_smoke.sh
+    - MEMORY_API_URL=http://127.0.0.1:8002 CLI_BIN=./cli/dist/memory bash -x ./scripts/ci_smoke.sh
   after_script:
     - docker compose -f docker-compose.test.postgres.yml down -v
   rules:
