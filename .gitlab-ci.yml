@@ -4,6 +4,10 @@ stages:
   - build
   - publish
 
+default:
+  tags:
+    - docker
+
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -55,6 +59,7 @@ integration_postgres:
 build_cli_artifact:
   stage: build
   needs:
+    - python_tests
     - cli_tests
   script:
     - cd cli
@@ -75,6 +80,7 @@ build_cli_artifact:
 publish_image:
   stage: publish
   needs:
+    - build_cli_artifact
     - integration_postgres
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
