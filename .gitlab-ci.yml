@@ -17,7 +17,7 @@ workflow:
 python_tests:
   stage: verify
   script:
-    - uv sync --frozen
+    - uv sync --frozen --extra dev
     - uv run python -m pytest tests/test_services/ tests/test_api/ -v
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
@@ -41,7 +41,7 @@ integration_postgres:
     - cli_tests
   script:
     - export OLLAMA_HOST="${OLLAMA_HOST:-https://ollama.mmz.sh}"
-    - uv sync --frozen
+    - uv sync --frozen --extra dev
     - docker compose -f docker-compose.test.postgres.yml up -d --build
     - INTEGRATION_TESTS=1 MEMORY_API_URL=http://localhost:8002 uv run python -m pytest tests/integration/ -k "not auth" -v
     - cd cli
