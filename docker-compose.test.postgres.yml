@@ -59,7 +59,7 @@ services:
     restart: "no"
 
   qdrant-test-postgres:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant@sha256:94728574965d17c6485dd361aa3c0818b325b9016dac5ea6afec7b4b2700865f
     ports:
       - "6335:6333"
     volumes:
