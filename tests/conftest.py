@@ -58,12 +58,27 @@ def mock_embeddings():
     Auto-used: patches generate_embedding and upsert_embedding in every test.
     Tests never call real OpenAI/Ollama.
     """
-    with patch(
-        "app.services.embedding_service.generate_embedding",
-        new=AsyncMock(return_value=FAKE_EMBEDDING),
-    ), patch(
-        "app.services.embedding_service.upsert_embedding",
-        new=AsyncMock(return_value=None),
+    with (
+        patch(
+            "app.services.embedding_service.generate_embedding",
+            new=AsyncMock(return_value=FAKE_EMBEDDING),
+        ),
+        patch(
+            "app.services.embedding_service.upsert_embedding",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.note_service.generate_embedding",
+            new=AsyncMock(return_value=FAKE_EMBEDDING),
+        ),
+        patch(
+            "app.services.note_service.upsert_embedding",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.services.search_service.generate_embedding",
+            new=AsyncMock(return_value=FAKE_EMBEDDING),
+        ),
     ):
         yield
 
@@ -81,7 +96,9 @@ def mock_qdrant():
     mock_client.delete.return_value = None
     mock_client.collection_exists.return_value = True
 
-    with patch("app.db.qdrant.client", mock_client), \
-         patch("app.services.note_service.client", mock_client), \
-         patch("app.services.embedding_service.client", mock_client):
+    with (
+        patch("app.db.qdrant.client", mock_client),
+        patch("app.services.note_service.client", mock_client),
+        patch("app.services.embedding_service.client", mock_client),
+    ):
         yield mock_client

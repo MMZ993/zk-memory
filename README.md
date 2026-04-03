@@ -63,6 +63,7 @@ Primary compose files:
 
 - `docker-compose.yml` (SQLite)
 - `docker-compose.postgres.yml` (PostgreSQL)
+- `docker-compose.deploy.yml` (image-based UAT/PROD deployment)
 
 ## CLI
 
@@ -110,6 +111,13 @@ make test-integration
 make test-integration-auth
 make test-integration-postgres
 ```
+
+## CI/CD
+
+- Pipeline definition: `.gitlab-ci.yml`
+- CI/CD contract and artifact outputs: `docs/ci-cd.md`
+- Deploy runtime contract: `docs/deploy-runtime.md`
+- UAT/PROD rollout runbook: `docs/uat-prod-rollout.md`
 
 ## Configuration
 

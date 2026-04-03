@@ -33,7 +33,7 @@ services:
       - QDRANT_COLLECTION=test_memory_pg
       - EMBEDDING_MODEL=nomic-embed-text
       - EMBEDDING_DIMENSION=768
-      - OLLAMA_HOST=http://localhost:11434
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://localhost:11434}
       - BUFFER_RETENTION_DAYS=7
       - LOG_LEVEL=INFO
     depends_on:

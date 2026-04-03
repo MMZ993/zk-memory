@@ -49,9 +49,6 @@ qdrant_storage/
 htmlcov/
 .tox/
 
-# uv
-uv.lock
-
 # OS
 .DS_Store
 Thumbs.db
