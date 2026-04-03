@@ -4,6 +4,19 @@ stages:
   - build
   - publish
 
+.ci_relevant_changes: &ci_relevant_changes
+  - .gitlab-ci.yml
+  - Dockerfile
+  - docker-compose*.yml
+  - pyproject.toml
+  - uv.lock
+  - alembic/**
+  - src/**
+  - tests/**
+  - cli/**
+  - scripts/**
+  - Makefile
+
 default:
   tags:
     - docker
@@ -11,7 +24,7 @@ default:
 workflow:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH
+    - if: '$CI_COMMIT_BRANCH == "develop"'
     - if: $CI_COMMIT_TAG
 
 python_tests:
@@ -20,9 +33,8 @@ python_tests:
     - uv sync --frozen --extra dev
     - uv run python -m pytest tests/test_services/ tests/test_api/ -v
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
+    - changes: *ci_relevant_changes
 
 cli_tests:
   stage: verify
@@ -30,9 +42,8 @@ cli_tests:
     - cd cli
     - go test ./...
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
+    - changes: *ci_relevant_changes
 
 integration_postgres:
   stage: integration
@@ -51,10 +62,9 @@ integration_postgres:
   after_script:
     - docker compose -f docker-compose.test.postgres.yml down -v
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "develop"
-    - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes: *ci_relevant_changes
 
 build_cli_artifact:
   stage: build
@@ -73,9 +83,8 @@ build_cli_artifact:
       - cli/dist/memory-cli-linux-amd64-*.tar.gz
     expire_in: 14 days
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH
     - if: $CI_COMMIT_TAG
+    - changes: *ci_relevant_changes
 
 publish_image:
   stage: publish
@@ -101,6 +110,6 @@ publish_image:
     reports:
       dotenv: build.env
   rules:
-    - if: $CI_COMMIT_BRANCH == "develop"
-    - if: $CI_COMMIT_BRANCH == "main"
     - if: $CI_COMMIT_TAG
+    - if: '$CI_COMMIT_BRANCH == "develop"'
+      changes: *ci_relevant_changes
