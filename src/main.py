@@ -1,10 +1,12 @@
 import asyncio
+import json
 import logging
+import time
 from contextlib import asynccontextmanager
 
 import httpx
 import uvicorn
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
@@ -18,11 +20,21 @@ from app.db import qdrant as qdrant_db
 from app.db.session import init_db
 from app.db.qdrant import init_qdrant
 
-settings = get_settings()
-logging.basicConfig(level=getattr(logging, settings.log_level))
-logger = logging.getLogger(__name__)
 _STARTUP_MAX_ATTEMPTS = 3
 _STARTUP_BACKOFF_SECONDS = 0.5
+_JSON_LOG_EXTRA_FIELDS = frozenset(
+    {
+        "attempt",
+        "client_host",
+        "dependency",
+        "duration_ms",
+        "max_attempts",
+        "method",
+        "path",
+        "retry_delay_seconds",
+        "status_code",
+    }
+)
 _QDRANT_RETRYABLE_ERRORS = (
     ConnectionError,
     TimeoutError,
@@ -31,6 +43,43 @@ _QDRANT_RETRYABLE_ERRORS = (
     ResponseHandlingException,
 )
 _DB_RETRYABLE_ERRORS = (SQLAlchemyError, ConnectionError, TimeoutError)
+
+
+class JsonLogFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        for key, value in record.__dict__.items():
+            if key in _JSON_LOG_EXTRA_FIELDS and value is not None:
+                payload[key] = value
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
+def _build_log_formatter() -> logging.Formatter:
+    if settings.log_format.lower() == "json":
+        return JsonLogFormatter()
+    return logging.Formatter("%(levelname)s:%(name)s:%(message)s")
+
+
+settings = get_settings()
+root_logger = logging.getLogger()
+log_level = getattr(logging, settings.log_level)
+if not root_logger.handlers:
+    root_logger.setLevel(log_level)
+    handler = logging.StreamHandler()
+    handler.setFormatter(_build_log_formatter())
+    root_logger.addHandler(handler)
+else:
+    for handler in root_logger.handlers:
+        if handler.formatter is None:
+            handler.setFormatter(_build_log_formatter())
+logger = logging.getLogger(__name__)
+logger.setLevel(log_level)
 
 
 async def _run_startup_with_retry(init_name: str, init_fn, retryable_errors):
@@ -86,6 +135,48 @@ app.add_middleware(
     allow_methods=settings.cors_allow_methods,
     allow_headers=settings.cors_allow_headers,
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.perf_counter()
+    logger.info(
+        "HTTP request started",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "client_host": request.client.host if request.client else None,
+        },
+    )
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        logger.error(
+            "HTTP request failed",
+            extra={
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": 500,
+                "duration_ms": duration_ms,
+                "client_host": request.client.host if request.client else None,
+            },
+        )
+        raise
+
+    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    logger.info(
+        "HTTP request completed",
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "duration_ms": duration_ms,
+            "client_host": request.client.host if request.client else None,
+        },
+    )
+    return response
 
 from app.api import buffer, notes, tags, relations, export, admin  # noqa: E402
 
