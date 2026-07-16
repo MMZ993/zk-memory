@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, pagination, require_buffer, require_read, require_write
 from app.core.config import get_settings
+from app.metrics import BUFFER_CREATED, BUFFER_READS
 from app.models.schemas import BufferNoteCreate, BufferNoteResponse
 from app.services.buffer_service import (
     add_to_buffer,
@@ -18,7 +19,9 @@ router = APIRouter(prefix="/api/buffer", tags=["buffer"])
 
 @router.post("/", response_model=BufferNoteResponse, status_code=201)
 def create_buffer_note(note: BufferNoteCreate, db: Session = Depends(get_db), _: None = Depends(require_buffer)):
-    return add_to_buffer(db, note.content, note.meta)
+    buffer_note = add_to_buffer(db, note.content, note.meta)
+    BUFFER_CREATED.inc()
+    return buffer_note
 
 
 @router.get("/", response_model=list[BufferNoteResponse])
@@ -28,7 +31,9 @@ def list_buffer_notes(
     db: Session = Depends(get_db),
     _: None = Depends(require_read),
 ):
-    return get_buffer_notes(db, processed=processed, **page)
+    buffer_notes = get_buffer_notes(db, processed=processed, **page)
+    BUFFER_READS.inc()
+    return buffer_notes
 
 
 # NOTE: /cleanup MUST be declared before /{note_id} — otherwise FastAPI matches
@@ -47,6 +52,7 @@ def get_buffer_note_endpoint(note_id: str, db: Session = Depends(get_db), _: Non
     note = get_buffer_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Buffer note not found")
+    BUFFER_READS.inc()
     return note
 
 

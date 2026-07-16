@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.qdrant import QDRANT_COLLECTION, client, init_qdrant
 from app.db.session import SessionLocal
+from app.metrics import record_sync_operation
 from app.models.database import AdminJob, BufferNote, Link, Note, NoteTag, Tag
 
 settings = get_settings()
@@ -272,6 +273,7 @@ async def start_reembed(job_id: str | None = None) -> None:
                     note.sync_status = "synced"
                     note.sync_last_success_at = _now()
                     note.sync_last_error = None
+                    record_sync_operation("reembed", "success")
                     _reembed_state["processed"] += 1
                     if job_id is not None:
                         job = db.query(AdminJob).filter(AdminJob.id == job_id).first()
@@ -297,6 +299,7 @@ async def start_reembed(job_id: str | None = None) -> None:
                         or not _is_retryable_reembed_error(exc)
                     ):
                         _reembed_state["failed"] += 1
+                        record_sync_operation("reembed", "failure")
                         if job_id is not None:
                             job = (
                                 db.query(AdminJob).filter(AdminJob.id == job_id).first()
@@ -319,6 +322,7 @@ async def start_reembed(job_id: str | None = None) -> None:
                     note.sync_status = "failed"
                     note.sync_last_error = str(exc)
                     _reembed_state["failed"] += 1
+                    record_sync_operation("reembed", "failure")
                     if job_id is not None:
                         job = db.query(AdminJob).filter(AdminJob.id == job_id).first()
                         if job is not None:

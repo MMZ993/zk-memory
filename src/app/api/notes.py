@@ -6,6 +6,7 @@ from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db, pagination, require_read, require_write
+from app.metrics import NOTES_READ
 from app.models.schemas import (
     LinkCreate,
     NoteCreate,
@@ -137,7 +138,9 @@ def list_notes_endpoint(
     _: None = Depends(require_read),
 ):
     tag_list = _normalize_query_tags(tags)
-    return list_notes(db, tags=tag_list, sort=sort, order=order, **page)
+    notes = list_notes(db, tags=tag_list, sort=sort, order=order, **page)
+    NOTES_READ.inc()
+    return notes
 
 
 @router.get("/{note_id}", response_model=NoteResponse)
@@ -147,6 +150,7 @@ def get_note_endpoint(
     note = get_note(db, note_id)
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
+    NOTES_READ.inc()
     return note
 
 

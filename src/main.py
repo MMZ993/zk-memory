@@ -8,7 +8,7 @@ import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from qdrant_client.http.exceptions import ApiException, ResponseHandlingException
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,6 +19,7 @@ from app.core.config import get_settings
 from app.db import qdrant as qdrant_db
 from app.db.session import init_db
 from app.db.qdrant import init_qdrant
+from app.metrics import METRICS_CONTENT_TYPE, render_metrics
 
 _STARTUP_MAX_ATTEMPTS = 3
 _STARTUP_BACKOFF_SECONDS = 0.5
@@ -219,6 +220,14 @@ async def readiness_check(db: Session = Depends(get_db)):
     if is_ready:
         return payload
     return JSONResponse(status_code=503, content=payload)
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics_endpoint(db: Session = Depends(get_db)):
+    return Response(
+        content=render_metrics(db),
+        headers={"Content-Type": METRICS_CONTENT_TYPE},
+    )
 
 
 @app.get("/")

@@ -1,18 +1,16 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from qdrant_client.http.exceptions import ApiException
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
-from app.models.database import Tag
+
 import app.services.note_service as note_service
-from app.services.note_service import (
-    NoteDeleteSyncError,
-    create_note,
-    get_note,
-    list_notes,
-    update_note,
-    delete_note,
-)
+from app.metrics import NOTES_CREATED
+from app.models.database import Note, Tag
+from app.services.note_service import (NoteDeleteSyncError, create_note,
+                                       delete_note, get_note, list_notes,
+                                       update_note)
 
 
 @pytest.mark.asyncio
@@ -26,6 +24,22 @@ async def test_create_note(db):
     assert note.sync_last_success_at is not None
     assert note.sync_last_error is None
     assert note.title == "T"
+
+
+@pytest.mark.asyncio
+async def test_create_note_counts_persisted_note_when_embedding_fails(db, monkeypatch):
+    created_before = NOTES_CREATED._value.get()
+    monkeypatch.setattr(
+        note_service,
+        "generate_embedding",
+        AsyncMock(side_effect=RuntimeError("embedding unavailable")),
+    )
+
+    with pytest.raises(RuntimeError, match="embedding unavailable"):
+        await create_note(db, {"title": "Pending", "content": "C"})
+
+    assert db.query(Note).filter(Note.title == "Pending").count() == 1
+    assert NOTES_CREATED._value.get() == created_before + 1
 
 
 @pytest.mark.asyncio
@@ -255,9 +269,10 @@ async def test_update_note_async_background_task_captures_immutable_tag_payload(
     tags.append("beta")
 
     assert background_tasks.func is note_service._embed_and_sync_by_note_id
-    assert len(background_tasks.args) == 2
+    assert len(background_tasks.args) == 3
     assert background_tasks.args[0] == note.id
     assert background_tasks.args[1] == ["alpha"]
+    assert background_tasks.args[2] == "update"
 
 
 @pytest.mark.asyncio
@@ -374,7 +389,7 @@ async def test_embed_and_sync_by_note_id_uses_fresh_session_and_closes_it(monkey
 
     session_factory.assert_called_once_with()
     get_note_mock.assert_called_once_with(fake_db, "note-123")
-    embed_mock.assert_awaited_once_with(fake_db, fake_note, ["x"])
+    embed_mock.assert_awaited_once_with(fake_db, fake_note, ["x"], "create")
     fake_db.close.assert_called_once_with()
 
 

@@ -16,6 +16,7 @@ Local-first memory backend for agents, with a Go CLI as the main frontend.
 - Search modes: semantic, keyword, hybrid, graph traversal
 - Admin operations: stats, config, unsynced repair, re-embed
 - Readiness endpoint for DB + Qdrant dependency checks
+- Prometheus metrics endpoint for VLAN-isolated monitoring
 
 ## Architecture
 
@@ -118,6 +119,23 @@ make test-integration-postgres
 - CI/CD contract and artifact outputs: `docs/ci-cd.md`
 - Deploy runtime contract: `docs/deploy-runtime.md`
 - UAT/PROD rollout runbook: `docs/uat-prod-rollout.md`
+
+## Metrics
+
+`GET /metrics` exposes Prometheus text-format metrics for a Prometheus server and Grafana dashboards. It is intentionally unauthenticated: restrict access to the monitoring VLAN with router ACLs or a reverse-proxy/network allowlist. Do not expose it to untrusted or public networks.
+
+The endpoint reports current note, tag, link, and buffer-note totals; notes per tag; note and buffer read/create counters; pending embedding-sync notes; and embedding-sync result counters. Tag names are emitted as the `tag` label, so keep the tag vocabulary bounded. The service supports one application process; Prometheus multiprocess collection is not configured.
+
+Example Prometheus scrape configuration:
+
+```yaml
+scrape_configs:
+  - job_name: zk-memory
+    static_configs:
+      - targets: ["zk-memory.internal:8000"]
+```
+
+Useful Grafana queries include `memory_notes`, `memory_notes_by_tag`, `rate(memory_notes_created_total[5m])`, and `rate(memory_sync_operations_total{result="failure"}[5m])`.
 
 ## Configuration
 

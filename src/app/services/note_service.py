@@ -10,6 +10,7 @@ from sqlalchemy import asc, desc, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.metrics import NOTES_CREATED, record_sync_operation
 from app.models.database import Note, Tag, NoteTag, Link
 
 
@@ -130,7 +131,9 @@ def _build_embedding_text(note: Note, tags: list[str]) -> str:
     return "\n\n".join(parts)
 
 
-async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
+async def _embed_and_sync(
+    db: Session, note: Note, tags: list[str], operation: str = "create"
+):
     """Generate embedding and mark note as synced."""
     for attempt in range(1, SYNC_MAX_RETRIES + 1):
         note.sync_attempts += 1
@@ -151,6 +154,7 @@ async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
             note.sync_last_success_at = _now()
             note.sync_last_error = None
             db.commit()
+            record_sync_operation(operation, "success")
             return
         except Exception as exc:
             note.synced = False
@@ -158,19 +162,22 @@ async def _embed_and_sync(db: Session, note: Note, tags: list[str]):
             note.sync_last_error = str(exc)
             db.commit()
             if attempt >= SYNC_MAX_RETRIES or not _is_retryable_sync_error(exc):
+                record_sync_operation(operation, "failure")
                 setattr(exc, "sync_retry_attempt", attempt)
                 setattr(exc, "sync_max_retries", SYNC_MAX_RETRIES)
                 raise
             await asyncio.sleep(_compute_sync_retry_delay(attempt))
 
 
-async def _embed_and_sync_by_note_id(note_id: str, tags: list[str]):
+async def _embed_and_sync_by_note_id(
+    note_id: str, tags: list[str], operation: str = "create"
+):
     db = SessionLocal()
     try:
         note = get_note(db, note_id)
         if not note:
             return
-        await _embed_and_sync(db, note, tags)
+        await _embed_and_sync(db, note, tags, operation)
     except (
         RuntimeError,
         ConnectionError,
@@ -228,6 +235,7 @@ async def create_note(db: Session, note_data: dict, background_tasks=None) -> No
     _save_tags(db, note.id, tags)
     db.commit()
     db.refresh(note)
+    NOTES_CREATED.inc()
 
     if settings.embedding_mode == "async" and background_tasks is not None:
         background_tasks.add_task(_embed_and_sync_by_note_id, note.id, list(tags))
@@ -290,7 +298,9 @@ async def update_note(
 
     if settings.embedding_mode == "async" and background_tasks is not None:
         try:
-            background_tasks.add_task(_embed_and_sync_by_note_id, note.id, list(tags))
+            background_tasks.add_task(
+                _embed_and_sync_by_note_id, note.id, list(tags), "update"
+            )
         except RuntimeError as exc:
             note.synced = False
             note.sync_status = "failed"
@@ -299,7 +309,7 @@ async def update_note(
             db.commit()
             raise
     else:
-        await _embed_and_sync(db, note, tags)
+        await _embed_and_sync(db, note, tags, "update")
 
     return note
 
@@ -395,7 +405,7 @@ async def sync_unsynced_notes(limit: int = 100) -> int:
         for note in unsynced:
             try:
                 tags = _get_tag_names(db, note.id)
-                await _embed_and_sync(db, note, tags)
+                await _embed_and_sync(db, note, tags, "repair")
                 synced_count += 1
             except Exception as exc:
                 logger.exception(
