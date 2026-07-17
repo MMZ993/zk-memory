@@ -27,8 +27,10 @@ Scopes are **flat and independent**. There is no implicit hierarchy except for `
 ### Public (no key required)
 | Method | Path |
 |--------|------|
-| GET | `/api/health` |
 | GET | `/` |
+| GET | `/api/health` |
+| GET | `/api/readiness` |
+| GET | `/metrics` |
 
 ### READ
 | Method | Path |
@@ -150,7 +152,8 @@ Scope: `admin` — passes all checks.
 - **Disabled**: all `MEMORY_API_KEY_*` vars unset → every request is accepted (dev/local mode)
 - **Enabled**: any key var is set → `X-Api-Key` header is required on all non-public endpoints
 - **Admin bypass**: a key present in `MEMORY_API_KEY_ADMIN` passes every scope check
-- **Wrong key / missing key**: HTTP 401
+- **Missing key**: HTTP 401
+- **Wrong key or insufficient scope**: HTTP 403
 
 ---
 

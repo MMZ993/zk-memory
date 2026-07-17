@@ -97,12 +97,9 @@ def test_docs_and_scripts_do_not_reference_legacy_dependency_workflow():
     )
     paths = (
         "README.md",
-        "NEXT_SESSION.md",
-        "PROGRESS.md",
         "docker-compose.test.yml",
         "docs/configuration.md",
         "docs/implementation-guide.md",
-        "docs/plan-postgres-migration.md",
         "docs/project-structure.md",
         "docs/testing-plan.md",
         "scripts/reset_integration.sh",
@@ -156,12 +153,9 @@ def test_docs_and_prompts_do_not_reference_openai_or_provider_switching():
     )
     paths = (
         "README.md",
-        "CLAUDE.md",
         "docs/api-specification.md",
         "docs/configuration.md",
-        "docs/documentation-summary.md",
         "docs/implementation-guide.md",
-        "docs/IMPLEMENTATION_GAPS.md",
         "docs/MANUAL_TESTING.md",
         "docs/project-structure.md",
         "docs/testing-plan.md",

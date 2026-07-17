@@ -113,6 +113,12 @@ make test-integration-auth
 make test-integration-postgres
 ```
 
+## API Documentation
+
+- Concise endpoint and access reference: `docs/api-reference.md`
+- Scoped key configuration: `docs/api-scopes.md`
+- Interactive schema: `/docs` when the API is running
+
 ## CI/CD
 
 - Pipeline definition: `.gitlab-ci.yml`
