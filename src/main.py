@@ -199,13 +199,14 @@ def _metric_route_path(request: Request) -> str:
 def _metric_http_method(request: Request) -> str:
     return request.method if request.method in _METRIC_HTTP_METHODS else "OTHER"
 
-from app.api import buffer, notes, tags, relations, export, admin  # noqa: E402
+from app.api import admin, buffer, export, imports, notes, relations, tags  # noqa: E402
 
 app.include_router(buffer.router)
 app.include_router(notes.router)
 app.include_router(tags.router)
 app.include_router(relations.router)
 app.include_router(export.router)
+app.include_router(imports.router)
 app.include_router(admin.router)
 
 

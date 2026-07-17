@@ -141,6 +141,25 @@ memory export notes > notes.json
 memory export buffer > buffer.json
 ```
 
+### import
+
+Canonical JSON imports require an admin API key and are dry-run by default. The report lists new, identical, conflicting, rejected/overwritten, and database-only entities. Applying an import never deletes database records.
+
+```bash
+memory import backup.json                         # dry-run only
+memory import backup.json --soft                  # create clean entities, reject conflicts
+memory import backup.json --force                 # overwrite matching-ID conflicts
+memory import backup.json --type notes --id <id>  # analyze one entity
+memory import backup.json --soft --type links --id <link-id>
+memory import ~/vault                              # generated Obsidian/Wiki.js vault
+memory import ~/vault/<note-id>.md --type notes --id <note-id>
+memory import ~/vault/<note-id>.md --type links --id <link-id>
+```
+
+Supported JSON selection types are `notes`, `tags`, `note_tags`, `relation_types`, `links`, and `buffer_notes`. A note-tag ID is written as `<note-id>:<tag-id>`. `--soft` and `--force` are mutually exclusive.
+
+Generated Markdown vault imports use note frontmatter and `zk-memory-manifest.json` as authoritative metadata; rendered Links/Related sections are ignored as note content. A lone generated Markdown file can supply its note and encoded links. Shared tags and relation types require the full vault manifest unless sufficient encoded dependency metadata is present; unsupported metadata is omitted rather than guessed.
+
 ### dump
 
 Export notes to local files for human browsing or backup.

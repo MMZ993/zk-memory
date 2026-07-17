@@ -33,6 +33,7 @@ func init() {
 	rootCmd.AddCommand(tagsCmd)
 	rootCmd.AddCommand(relationsCmd)
 	rootCmd.AddCommand(exportCmd)
+	rootCmd.AddCommand(importCmd)
 	rootCmd.AddCommand(adminCmd)
 	rootCmd.AddCommand(dumpCmd)
 }

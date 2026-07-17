@@ -34,6 +34,18 @@ WRITE_KEY = "test_key_write"
 DUMP_KEY = "test_key_dump"
 ADMIN_KEY = "test_key_admin"
 BAD_KEY = "not_a_valid_key"
+EMPTY_IMPORT = {
+    "document": {
+        "version": 1,
+        "exported_at": "2026-07-17T00:00:00Z",
+        "notes": [],
+        "tags": [],
+        "note_tags": [],
+        "relation_types": [],
+        "links": [],
+        "buffer_notes": [],
+    }
+}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -185,6 +197,12 @@ class TestWrongScope:
         r = auth_client.get("/api/config", headers={"X-API-Key": WRITE_KEY})
         assert r.status_code == 403
 
+    def test_write_key_cannot_import(self, auth_client):
+        r = auth_client.post(
+            "/api/import/", json=EMPTY_IMPORT, headers={"X-API-Key": WRITE_KEY}
+        )
+        assert r.status_code == 403
+
     def test_buffer_key_cannot_read_notes(self, auth_client):
         r = auth_client.get("/api/notes/", headers={"X-API-Key": BUFFER_KEY})
         assert r.status_code == 403
@@ -270,6 +288,13 @@ class TestCorrectScope:
     def test_admin_key_can_get_config(self, auth_client):
         r = auth_client.get("/api/config", headers={"X-API-Key": ADMIN_KEY})
         assert r.status_code == 200
+
+    def test_admin_key_can_dry_run_import(self, auth_client):
+        r = auth_client.post(
+            "/api/import/", json=EMPTY_IMPORT, headers={"X-API-Key": ADMIN_KEY}
+        )
+        assert r.status_code == 200
+        assert r.json()["mode"] == "dry_run"
 
 
 # ── Admin key bypasses all scope checks ──────────────────────────────────────
