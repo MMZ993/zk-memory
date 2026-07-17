@@ -60,7 +60,13 @@ integration_postgres:
     - cd ..
     - MEMORY_API_URL=http://127.0.0.1:8002 CLI_BIN=./cli/dist/memory ./scripts/ci_smoke.sh
   after_script:
+    - docker compose -f docker-compose.test.postgres.yml logs --timestamps --no-color > integration-postgres-compose.log || true
     - docker compose -f docker-compose.test.postgres.yml down -v
+  artifacts:
+    when: always
+    paths:
+      - integration-postgres-compose.log
+    expire_in: 14 days
   rules:
     - if: '$CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "main"'
       changes: *ci_relevant_changes
