@@ -39,8 +39,10 @@ curl -s http://localhost:8001/api/health | python3 -m json.tool
 
 Expected:
 ```json
-{"status": "ok", "database": "ok", "vector_db": "ok", "version": "..."}
+{"status": "healthy", "version": "1.0.0"}
 ```
+
+Use `/api/readiness` to verify database and Qdrant availability.
 
 ### Seed the dataset (14 notes + 13 links)
 
@@ -401,7 +403,7 @@ memory-dump export notes --pretty
 
 # ADMIN key: config
 memory-admin admin config --pretty
-# → current server configuration including embedding provider, DB backend, etc.
+# → current server configuration including embedding settings, DB backend, etc.
 ```
 
 ### Admin key bypasses all scope checks

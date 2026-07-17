@@ -1,74 +1,63 @@
 # Backup Strategy
 
-Backup is handled externally. This project does not expose backup API endpoints. Both data stores are files/directories that can be backed up with standard tools.
+Backups are external to the API. Back up the SQL database and Qdrant data at the
+same point in time, then verify that both artifacts can be restored.
 
-## SQLite
+## SQLite deployments
 
-SQLite is a single file: `data/memory.db`.
-
-**Backup**: Copy the file. Use SQLite's online backup API if copying while the server is running:
+The default database is `data/memory.db`. Stop the application before copying it,
+or use SQLite's online backup command while it is running.
 
 ```bash
-# Simple file copy (safe when server is stopped)
-cp data/memory.db data/backups/memory_$(date +%Y%m%d_%H%M%S).db
-
-# Online backup using sqlite3 (safe while server is running)
+mkdir -p data/backups
 sqlite3 data/memory.db ".backup data/backups/memory_$(date +%Y%m%d_%H%M%S).db"
 ```
 
-**Restore**: Stop the server, replace `data/memory.db`, restart.
+To restore, stop the application, replace `data/memory.db` with the backup, then
+start the application again.
+
+## PostgreSQL deployments
+
+The deployment compose stores PostgreSQL data at `POSTGRES_DATA_DIR`. Prefer a
+logical dump for routine backups:
+
+```bash
+mkdir -p backups
+
+docker compose --env-file .env.deploy -f docker-compose.deploy.yml \
+  exec -T postgres pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" \
+  > "backups/postgres_$(date +%Y%m%d_%H%M%S).sql"
+```
+
+Restore only while the application is stopped and after selecting the intended
+backup. Use `psql` or the deployment platform's documented restore procedure;
+restoring a database overwrites current data.
 
 ## Qdrant
 
-Qdrant stores all data in the `qdrant_storage/` directory (mounted as a Docker volume).
-
-### Option A: Directory copy (simplest, requires stopping Qdrant)
-
-```bash
-# Stop Qdrant
-docker compose stop qdrant
-
-# Copy storage directory
-cp -r qdrant_storage/ qdrant_storage_backup_$(date +%Y%m%d_%H%M%S)/
-
-# Restart
-docker compose start qdrant
-```
-
-### Option B: Qdrant native snapshot API (live, no downtime)
+Qdrant data is stored at `QDRANT_DATA_DIR` in the deployment compose or
+`qdrant_storage/` in the local compose stack. Either stop Qdrant and copy that
+directory, or create a native snapshot:
 
 ```bash
-# Create snapshot
 curl -X POST http://localhost:6333/collections/notes_embeddings/snapshots
-
-# List snapshots
-curl http://localhost:6333/collections/notes_embeddings/snapshots
-
-# Download snapshot (snapshots are stored in qdrant_storage/snapshots/)
 ```
 
-**Restore**: Use `POST /collections/{name}/snapshots/recover` or replace the storage directory when stopped.
+Use Qdrant's snapshot recovery endpoint or replace the storage directory while
+Qdrant is stopped to restore it.
 
-## Consistency
+## Consistency and recovery
 
-To ensure SQLite and Qdrant are consistent at restore time, back them up at the same time. Any notes in SQLite with `synced=false` are safe — they will be re-embedded on the next `POST /api/admin/sync-embeddings` call.
-
-## Automated Backup Example
+A restored SQL database can contain notes whose vectors are pending or failed.
+The note sync state records the status, attempt count, last error, and timestamps.
+After restoring both stores, run the embedding repair operation if required:
 
 ```bash
-#!/bin/bash
-# Simple daily backup script — run via cron or external scheduler
-
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_DIR="./data/backups"
-
-mkdir -p "$BACKUP_DIR"
-
-# SQLite
-sqlite3 data/memory.db ".backup ${BACKUP_DIR}/memory_${TIMESTAMP}.db"
-echo "SQLite backed up to ${BACKUP_DIR}/memory_${TIMESTAMP}.db"
-
-# Qdrant snapshot
-curl -s -X POST http://localhost:6333/collections/notes_embeddings/snapshots
-echo "Qdrant snapshot created (see qdrant_storage/snapshots/)"
+curl -X POST -H "X-API-Key: $MEMORY_API_KEY" \
+  http://localhost:8000/api/admin/sync-embeddings
 ```
+
+The supplied key must have the `admin` scope. See [API access scopes](api-scopes.md).
+
+For production deployments, make a pre-deploy backup and retain backups according
+to the policy documented in [the UAT/PROD rollout runbook](uat-prod-rollout.md).

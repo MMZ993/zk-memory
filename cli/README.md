@@ -4,7 +4,7 @@ Go CLI for the AI agent memory system. Single static binary, no runtime dependen
 
 ## Installation
 
-Build from source (requires Go 1.22+):
+Build from source (requires Go 1.26+):
 
 ```bash
 cd cli/
@@ -35,12 +35,13 @@ export MEMORY_API_KEY=secret123
 
 ### Scoped access via bash functions
 
-The API enforces per-scope keys (see `docs/api-scopes.md`). The CLI sends a single key per invocation, so when multiple agents share the same machine each with a different role, define bash functions in `.bashrc` to pin the right key per role:
+The API enforces per-scope keys (see [`../docs/api-scopes.md`](../docs/api-scopes.md)). The CLI sends a single key per invocation, so when multiple agents share the same machine each with a different role, define bash functions in `.bashrc` to pin the right key per role:
 
 ```bash
 memory_read()   { MEMORY_API_KEY=key_ro_xxx   memory "$@"; }
 memory_buffer() { MEMORY_API_KEY=key_buf_xxx  memory "$@"; }
 memory_write()  { MEMORY_API_KEY=key_rw_xxx   memory "$@"; }
+memory_dump()   { MEMORY_API_KEY=key_dump_xxx memory "$@"; }
 memory_admin()  { MEMORY_API_KEY=key_adm_xxx  memory "$@"; }
 ```
 

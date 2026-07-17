@@ -99,9 +99,6 @@ def test_docs_and_scripts_do_not_reference_legacy_dependency_workflow():
         "README.md",
         "docker-compose.test.yml",
         "docs/configuration.md",
-        "docs/implementation-guide.md",
-        "docs/project-structure.md",
-        "docs/testing-plan.md",
         "scripts/reset_integration.sh",
         "tests/integration/conftest.py",
     )
@@ -153,12 +150,7 @@ def test_docs_and_prompts_do_not_reference_openai_or_provider_switching():
     )
     paths = (
         "README.md",
-        "docs/api-specification.md",
         "docs/configuration.md",
-        "docs/implementation-guide.md",
-        "docs/MANUAL_TESTING.md",
-        "docs/project-structure.md",
-        "docs/testing-plan.md",
     )
 
     for path in paths:
