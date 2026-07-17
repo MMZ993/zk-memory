@@ -8,9 +8,10 @@ import (
 
 // State is persisted to the state file after each successful dump.
 type State struct {
-	DumpedAt string    `json:"dumped_at"` // RFC3339 UTC
-	Format   string    `json:"format"`
-	Stats    DumpStats `json:"stats"`
+	DumpedAt string            `json:"dumped_at"` // RFC3339 UTC
+	Format   string            `json:"format"`
+	Stats    DumpStats         `json:"stats"`
+	Files    map[string]string `json:"files,omitempty"` // relative path → SHA-256 content hash
 }
 
 // DumpStats holds summary counts saved to the state file.
@@ -40,6 +41,9 @@ func ReadState(path string) (*State, error) {
 
 // WriteState writes s to path, creating or replacing the file.
 func WriteState(path string, s State) error {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refuse symlink state destination %s", path)
+	}
 	data, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err

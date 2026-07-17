@@ -15,8 +15,8 @@ var dumpCmd = &cobra.Command{
 	Long: `Export notes to a local directory in Obsidian, JSON, or Wiki.js format.
 
 On the first run a state file is saved to <output>/.dump-state.json.
-Subsequent runs without --since automatically use the previous dump date
-as a cutoff, exporting only notes created or updated since then.
+Subsequent Markdown runs compare a complete inventory and only rewrite changed
+files while removing stale managed files. JSON remains a complete snapshot.
 
 If the requested --format differs from the format recorded in the state
 file, the command will exit with an error. Use --force to proceed anyway.`,
@@ -40,13 +40,12 @@ file, the command will exit with an error. Use --force to proceed anyway.`,
 		}
 
 		cfg := dump.Config{
-			OutputDir:   dumpOutput,
-			Format:      dumpFormat,
-			Since:       since,
-			StatePath:   dumpState,
-			NoState:     dumpNoState,
-			Force:       dumpForce,
-			Concurrency: dumpConcurrency,
+			OutputDir: dumpOutput,
+			Format:    dumpFormat,
+			Since:     since,
+			StatePath: dumpState,
+			NoState:   dumpNoState,
+			Force:     dumpForce,
 		}
 
 		stats, err := dump.Run(c, cfg)
@@ -71,23 +70,21 @@ file, the command will exit with an error. Use --force to proceed anyway.`,
 }
 
 var (
-	dumpOutput      string
-	dumpFormat      string
-	dumpSince       string
-	dumpState       string
-	dumpNoState     bool
-	dumpForce       bool
-	dumpConcurrency int
+	dumpOutput  string
+	dumpFormat  string
+	dumpSince   string
+	dumpState   string
+	dumpNoState bool
+	dumpForce   bool
 )
 
 func init() {
 	dumpCmd.Flags().StringVar(&dumpOutput, "output", "", "Output directory (required)")
 	dumpCmd.Flags().StringVar(&dumpFormat, "format", "obsidian", "Output format: obsidian|json|wikijs")
-	dumpCmd.Flags().StringVar(&dumpSince, "since", "", "Only dump notes updated after this date (ISO 8601: 2026-03-01 or 2026-03-01T10:00:00Z)")
+	dumpCmd.Flags().StringVar(&dumpSince, "since", "", "Compatibility-only ISO 8601 date; full inventory comparison determines changes")
 	dumpCmd.Flags().StringVar(&dumpState, "state", "", "State file path (default: <output>/.dump-state.json)")
 	dumpCmd.Flags().BoolVar(&dumpNoState, "no-state", false, "Skip reading and writing the state file")
 	dumpCmd.Flags().BoolVar(&dumpForce, "force", false, "Proceed even if format mismatches the state file")
-	dumpCmd.Flags().IntVar(&dumpConcurrency, "concurrency", 5, "Parallel workers for link fetching")
 }
 
 // parseSince accepts ISO 8601 date ("2026-03-01") or datetime ("2026-03-01T10:00:00Z").

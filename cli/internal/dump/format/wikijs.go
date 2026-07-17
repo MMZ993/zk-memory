@@ -2,83 +2,59 @@ package format
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 )
 
-// WriteWikiJS writes one .md file per note into outDir using Wiki.js format:
-// YAML frontmatter (title, description, tags, dates) + content + ## Related section.
-// Filenames are URL slugs derived from the title.
-func WriteWikiJS(notes []EnrichedNote, outDir string) error {
-	filenames := buildFilenames(notes, slugify, ".md")
-
-	// Build slug map for link targets (title → slug-filename without ext)
-	slugByID := make(map[string]string, len(notes))
-	for _, n := range notes {
-		name := filenames[n.ID]
-		slugByID[n.ID] = strings.TrimSuffix(name, ".md")
-	}
-
-	for _, n := range notes {
-		content := renderWikiJS(n, slugByID)
-		path := filepath.Join(outDir, filenames[n.ID])
-		if err := os.WriteFile(path, []byte(content), 0644); err != nil {
-			return fmt.Errorf("write %s: %w", path, err)
+// RenderWikiJS renders a complete ID-stable Wiki.js Markdown inventory.
+func RenderWikiJS(doc VaultDocument) (map[string][]byte, error) {
+	files := make(map[string][]byte, len(doc.Notes)+len(doc.Buffers)+1)
+	for _, note := range doc.Notes {
+		if err := validateID(note.ID); err != nil {
+			return nil, err
 		}
+		for _, link := range note.Links {
+			if err := validateID(link.TargetID); err != nil {
+				return nil, err
+			}
+		}
+		files[note.ID+".md"] = []byte(renderWikiJSNote(note))
 	}
-	return nil
+	for _, buffer := range doc.Buffers {
+		if err := validateID(buffer.ID); err != nil {
+			return nil, err
+		}
+		content, err := renderBuffer(buffer)
+		if err != nil {
+			return nil, err
+		}
+		files["buffer/"+buffer.ID+".md"] = []byte(content)
+	}
+	manifest, err := renderManifest(doc)
+	if err != nil {
+		return nil, err
+	}
+	files["zk-memory-manifest.json"] = manifest
+	return files, nil
 }
 
-func renderWikiJS(n EnrichedNote, slugByID map[string]string) string {
+func renderWikiJSNote(n VaultNote) string {
 	var b strings.Builder
-
-	// Frontmatter
 	b.WriteString("---\n")
-	fmt.Fprintf(&b, "title: %s\n", yamlQuoteTitle(n.Title))
-	if n.Summary != "" {
-		fmt.Fprintf(&b, "description: %s\n", yamlQuoteTitle(n.Summary))
-	}
-	if len(n.Tags) > 0 {
-		b.WriteString("tags:\n")
-		for _, t := range n.Tags {
-			fmt.Fprintf(&b, "  - %s\n", t)
-		}
-	}
-	// Wiki.js uses date-only for created/updated in frontmatter
-	fmt.Fprintf(&b, "created: %s\n", dateOnly(n.CreatedAt))
-	fmt.Fprintf(&b, "updated: %s\n", dateOnly(n.UpdatedAt))
-	b.WriteString("---\n\n")
-
-	// Content
-	b.WriteString(n.Content)
-
-	// Related section
+	writeNoteFrontmatter(&b, n)
+	fmt.Fprintf(&b, "route: %s\n---\n\n%s", yamlQuoteTitle("/"+n.ID), n.Content)
 	if len(n.Links) > 0 {
-		b.WriteString("\n\n## Related\n\n")
-		for _, lnk := range n.Links {
-			slug := slugByID[lnk.TargetID]
-			if slug == "" {
-				slug = slugify(lnk.TargetTitle)
+		b.WriteString("\n\n<!-- zk-memory:related:start -->\n## Related\n\n")
+		for _, link := range n.Links {
+			fmt.Fprintf(&b, "- [%s](/%s)", projectionText(link.TargetTitle), projectionText(link.TargetID))
+			if link.RelationType != "" {
+				fmt.Fprintf(&b, " — %s", projectionText(link.RelationType))
 			}
-			line := fmt.Sprintf("- [%s](/%s)", lnk.TargetTitle, slug)
-			if lnk.RelationType != "" {
-				line += " — " + lnk.RelationType
+			if link.Description != nil && *link.Description != "" {
+				fmt.Fprintf(&b, ": %s", projectionText(*link.Description))
 			}
-			if lnk.Description != "" {
-				line += ": " + lnk.Description
-			}
-			b.WriteString(line + "\n")
+			fmt.Fprintf(&b, " <!-- zk-memory-link-base64: %s -->\n", linkMetadata(link))
 		}
+		b.WriteString("<!-- zk-memory:related:end -->")
 	}
-
 	return b.String()
-}
-
-// dateOnly extracts the date portion from an ISO 8601 datetime string.
-func dateOnly(s string) string {
-	if len(s) >= 10 {
-		return s[:10]
-	}
-	return s
 }

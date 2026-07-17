@@ -14,7 +14,7 @@ var exportCmd = &cobra.Command{
 
 var exportAllCmd = &cobra.Command{
 	Use:   "all",
-	Short: "Export all notes and buffer notes",
+	Short: "Export a versioned full JSON snapshot",
 	Run: func(cmd *cobra.Command, args []string) {
 		c, err := client.New()
 		if err != nil {

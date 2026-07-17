@@ -258,9 +258,10 @@ class TestCorrectScope:
         )
         assert r.status_code == 201
 
-    def test_dump_key_can_export_notes(self, auth_client):
-        r = auth_client.get("/api/export/notes", headers={"X-API-Key": DUMP_KEY})
+    def test_dump_key_can_export_full_document(self, auth_client):
+        r = auth_client.get("/api/export/", headers={"X-API-Key": DUMP_KEY})
         assert r.status_code == 200
+        assert r.json()["version"] == 1
 
     def test_dump_key_can_export_buffer(self, auth_client):
         r = auth_client.get("/api/export/buffer", headers={"X-API-Key": DUMP_KEY})
@@ -297,8 +298,9 @@ class TestAdminKeyBypassesAllScopes:
         assert r.status_code == 201
 
     def test_admin_can_export(self, auth_client):
-        r = auth_client.get("/api/export/notes", headers={"X-API-Key": ADMIN_KEY})
+        r = auth_client.get("/api/export/", headers={"X-API-Key": ADMIN_KEY})
         assert r.status_code == 200
+        assert r.json()["version"] == 1
 
     def test_admin_can_get_stats(self, auth_client):
         r = auth_client.get("/api/stats", headers={"X-API-Key": ADMIN_KEY})

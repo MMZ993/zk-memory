@@ -133,7 +133,7 @@ memory relations delete <id>
 
 ### export
 
-Export returns JSON arrays. Redirect to a file to save.
+`export all` returns the authoritative versioned JSON snapshot. It preserves IDs and timestamps and separately includes notes, tags, note-tag associations, relation types, links, and buffer notes. Redirect it to a file to save the snapshot. The resource-specific commands remain available and return JSON arrays.
 
 ```bash
 memory export all > backup.json
@@ -149,12 +149,12 @@ Export notes to local files for human browsing or backup.
 # Full dump to Obsidian vault (default format)
 memory dump --output ~/vault
 
-# Incremental: subsequent runs auto-use last dump date from state file
+# Incremental: subsequent runs compare content inventory and only rewrite changes
 memory dump --output ~/vault
 
 # Other formats
 memory dump --output ~/wiki --format wikijs
-memory dump --output ~/backup --format json
+memory dump --output ~/backup --format json  # writes ~/backup/export.json
 
 # Explicit date cutoff
 memory dump --output ~/vault --since 2026-03-01
@@ -166,7 +166,7 @@ memory dump --output ~/vault --format wikijs --force
 memory dump --output /tmp/snapshot --no-state
 ```
 
-**State file** (`<output>/.dump-state.json`): saved after each run with `dumped_at`, `format`, and stats. On the next run without `--since`, `dumped_at` becomes the implicit cutoff — only notes updated since the last dump are written.
+**Markdown layout and state**: notes use stable `<id>.md` paths, buffered items use `buffer/<id>.md`, and `zk-memory-manifest.json` stores versioned shared tag, note-tag, and relation metadata. Generated link sections are explicitly marked. `.dump-state.json` stores content hashes so subsequent runs only rewrite changed files and remove stale managed files. JSON dumps always replace `export.json` with a complete canonical snapshot.
 
 **Format mismatch**: if the state file records a different format than requested, the command exits with an error. Use `--force` to override (does not delete old format files).
 
@@ -174,11 +174,10 @@ memory dump --output /tmp/snapshot --no-state
 |---|---|---|
 | `--output` | required | Output directory |
 | `--format` | `obsidian` | `obsidian` \| `json` \| `wikijs` |
-| `--since` | — | ISO 8601 date cutoff |
+| `--since` | — | Accepted for compatibility; full inventory comparison determines Markdown changes |
 | `--state` | `<output>/.dump-state.json` | State file path |
 | `--no-state` | false | Skip state file entirely |
 | `--force` | false | Override format mismatch |
-| `--concurrency` | 5 | Parallel link-fetch workers |
 
 ### admin
 
