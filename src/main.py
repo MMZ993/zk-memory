@@ -19,7 +19,7 @@ from app.core.config import get_settings
 from app.db import qdrant as qdrant_db
 from app.db.session import init_db
 from app.db.qdrant import init_qdrant
-from app.metrics import METRICS_CONTENT_TYPE, render_metrics
+from app.metrics import METRICS_CONTENT_TYPE, record_http_request, render_metrics
 
 _STARTUP_MAX_ATTEMPTS = 3
 _STARTUP_BACKOFF_SECONDS = 0.5
@@ -44,6 +44,9 @@ _QDRANT_RETRYABLE_ERRORS = (
     ResponseHandlingException,
 )
 _DB_RETRYABLE_ERRORS = (SQLAlchemyError, ConnectionError, TimeoutError)
+_METRIC_HTTP_METHODS = frozenset(
+    {"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+)
 
 
 class JsonLogFormatter(logging.Formatter):
@@ -153,7 +156,10 @@ async def log_requests(request: Request, call_next):
     try:
         response = await call_next(request)
     except Exception:
-        duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+        duration_seconds = time.perf_counter() - start_time
+        duration_ms = round(duration_seconds * 1000, 2)
+        path = _metric_route_path(request)
+        record_http_request(_metric_http_method(request), path, 500, duration_seconds)
         logger.error(
             "HTTP request failed",
             extra={
@@ -166,7 +172,12 @@ async def log_requests(request: Request, call_next):
         )
         raise
 
-    duration_ms = round((time.perf_counter() - start_time) * 1000, 2)
+    duration_seconds = time.perf_counter() - start_time
+    duration_ms = round(duration_seconds * 1000, 2)
+    path = _metric_route_path(request)
+    record_http_request(
+        _metric_http_method(request), path, response.status_code, duration_seconds
+    )
     logger.info(
         "HTTP request completed",
         extra={
@@ -178,6 +189,15 @@ async def log_requests(request: Request, call_next):
         },
     )
     return response
+
+
+def _metric_route_path(request: Request) -> str:
+    route = request.scope.get("route")
+    return getattr(route, "path", "unmatched")
+
+
+def _metric_http_method(request: Request) -> str:
+    return request.method if request.method in _METRIC_HTTP_METHODS else "OTHER"
 
 from app.api import buffer, notes, tags, relations, export, admin  # noqa: E402
 

@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional
 from datetime import datetime, timezone
 import logging
+import time
 import uuid
 
 import httpx
@@ -10,7 +11,7 @@ from sqlalchemy import asc, desc, func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.metrics import NOTES_CREATED, record_sync_operation
+from app.metrics import NOTES_CREATED, record_qdrant_operation, record_sync_operation
 from app.models.database import Note, Tag, NoteTag, Link
 
 
@@ -322,24 +323,32 @@ def delete_note(db: Session, note_id: str) -> bool:
 
     from qdrant_client.models import PointIdsList
 
+    start_time = time.perf_counter()
     try:
         client.delete(
             collection_name=QDRANT_COLLECTION,
             points_selector=PointIdsList(points=[note_id]),
         )
-    except (
-        RuntimeError,
-        ConnectionError,
-        TimeoutError,
-        httpx.HTTPError,
-        ApiException,
-        ResponseHandlingException,
-    ):
-        logger.exception(
-            "Note delete vector cleanup failed",
-            extra={"note_id": note_id},
-        )
-        raise NoteDeleteSyncError("failed to delete note vector")
+    except Exception as exc:
+        record_qdrant_operation("delete", "failure", time.perf_counter() - start_time)
+        if isinstance(
+            exc,
+            (
+                RuntimeError,
+                ConnectionError,
+                TimeoutError,
+                httpx.HTTPError,
+                ApiException,
+                ResponseHandlingException,
+            ),
+        ):
+            logger.exception(
+                "Note delete vector cleanup failed",
+                extra={"note_id": note_id},
+            )
+            raise NoteDeleteSyncError("failed to delete note vector") from exc
+        raise
+    record_qdrant_operation("delete", "success", time.perf_counter() - start_time)
 
     db.query(Link).filter(
         (Link.source_id == note_id) | (Link.target_id == note_id)

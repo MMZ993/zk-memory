@@ -9,10 +9,13 @@ Pull the Ollama model before first run:
   ollama pull nomic-embed-text
 """
 
+import time
+
 import httpx
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchAny
 
 from app.db.qdrant import client, QDRANT_COLLECTION
+from app.metrics import record_embedding_request, record_qdrant_operation
 from app.core.config import get_settings
 
 settings = get_settings()
@@ -43,10 +46,16 @@ async def generate_embedding(text: str, task: str = "document") -> list[float]:
 
 async def upsert_embedding(note_id: str, vector: list[float], payload: dict) -> None:
     """Insert or update a note's vector in Qdrant."""
-    client.upsert(
-        collection_name=QDRANT_COLLECTION,
-        points=[PointStruct(id=note_id, vector=vector, payload=payload)],
-    )
+    start_time = time.perf_counter()
+    try:
+        client.upsert(
+            collection_name=QDRANT_COLLECTION,
+            points=[PointStruct(id=note_id, vector=vector, payload=payload)],
+        )
+    except Exception:
+        record_qdrant_operation("upsert", "failure", time.perf_counter() - start_time)
+        raise
+    record_qdrant_operation("upsert", "success", time.perf_counter() - start_time)
 
 
 async def search_embeddings(
@@ -60,12 +69,18 @@ async def search_embeddings(
         search_filter = Filter(
             must=[FieldCondition(key="tags", match=MatchAny(any=tag_filter))]
         )
-    response = client.query_points(
-        collection_name=QDRANT_COLLECTION,
-        query=query_vector,
-        query_filter=search_filter,
-        limit=limit,
-    )
+    start_time = time.perf_counter()
+    try:
+        response = client.query_points(
+            collection_name=QDRANT_COLLECTION,
+            query=query_vector,
+            query_filter=search_filter,
+            limit=limit,
+        )
+    except Exception:
+        record_qdrant_operation("search", "failure", time.perf_counter() - start_time)
+        raise
+    record_qdrant_operation("search", "success", time.perf_counter() - start_time)
     return response.points
 
 
@@ -79,11 +94,18 @@ async def _ollama_embed(text: str) -> list[float]:
     Requires Ollama running at settings.ollama_host (default: http://localhost:11434).
     Pull the model first: ollama pull nomic-embed-text
     """
-    async with httpx.AsyncClient() as http:
-        response = await http.post(
-            f"{settings.ollama_host}/api/embeddings",
-            json={"model": settings.embedding_model, "prompt": text},
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        return response.json()["embedding"]
+    start_time = time.perf_counter()
+    try:
+        async with httpx.AsyncClient() as http:
+            response = await http.post(
+                f"{settings.ollama_host}/api/embeddings",
+                json={"model": settings.embedding_model, "prompt": text},
+                timeout=30.0,
+            )
+            response.raise_for_status()
+            embedding = response.json()["embedding"]
+    except Exception:
+        record_embedding_request("ollama", "failure", time.perf_counter() - start_time)
+        raise
+    record_embedding_request("ollama", "success", time.perf_counter() - start_time)
+    return embedding

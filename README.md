@@ -124,7 +124,7 @@ make test-integration-postgres
 
 `GET /metrics` exposes Prometheus text-format metrics for a Prometheus server and Grafana dashboards. It is intentionally unauthenticated: restrict access to the monitoring VLAN with router ACLs or a reverse-proxy/network allowlist. Do not expose it to untrusted or public networks.
 
-The endpoint reports current note, tag, link, and buffer-note totals; notes per tag; note and buffer read/create counters; pending embedding-sync notes; and embedding-sync result counters. Tag names are emitted as the `tag` label, so keep the tag vocabulary bounded. The service supports one application process; Prometheus multiprocess collection is not configured.
+The endpoint reports current note, tag, link, and buffer-note totals; notes per tag; note and buffer read/create counters; pending embedding-sync count and oldest-pending age (`memory_sync_oldest_pending_seconds` is `0` when no notes are pending); embedding-sync result counters; HTTP request count and duration; plus Ollama embedding and Qdrant operation count and duration. HTTP paths use matched route templates rather than raw IDs. Tag names are emitted as the `tag` label, so keep the tag vocabulary bounded. The service supports one application process; Prometheus multiprocess collection is not configured.
 
 Example Prometheus scrape configuration:
 
@@ -135,7 +135,7 @@ scrape_configs:
       - targets: ["zk-memory.internal:8000"]
 ```
 
-Useful Grafana queries include `memory_notes`, `memory_notes_by_tag`, `rate(memory_notes_created_total[5m])`, and `rate(memory_sync_operations_total{result="failure"}[5m])`.
+Useful Grafana queries include `memory_notes`, `memory_notes_by_tag`, `memory_sync_oldest_pending_seconds`, `rate(memory_notes_created_total[5m])`, `rate(memory_http_requests_total{status=~"5.."}[5m])`, and `rate(memory_sync_operations_total{result="failure"}[5m])`.
 
 ## Configuration
 

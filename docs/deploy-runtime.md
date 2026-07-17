@@ -48,7 +48,7 @@ Post-deploy:
 
 `GET /metrics` is intentionally unauthenticated so Prometheus can scrape it without application credentials. Keep the API port and this endpoint reachable only from the monitoring VLAN through router ACLs, or restrict it with an equivalent reverse-proxy/network allowlist. Do not publish it to a public network.
 
-Prometheus should scrape the same API port with a target such as `zk-memory.internal:8000`. The application is single-process; Prometheus multiprocess collection is not configured.
+Prometheus should scrape the same API port with a target such as `zk-memory.internal:8000`. HTTP metrics use matched route templates rather than raw IDs, and dependency metrics distinguish Ollama embedding requests from Qdrant upsert/search/delete operations. `memory_sync_oldest_pending_seconds` complements the pending-sync count by exposing stalled work and is `0` when no notes are pending. The application is single-process; Prometheus multiprocess collection is not configured.
 
 ## Rollback
 
