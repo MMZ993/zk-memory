@@ -81,7 +81,7 @@ integration_import:
   script:
     - export IMPORT_E2E_PROJECT="zk-memory-import-e2e-${CI_JOB_ID}"
     - uv sync --frozen --extra dev
-    - make test-integration-import
+    - ./scripts/test_integration_import.sh
   after_script:
     - test -s import-e2e-compose.log || docker compose -p "zk-memory-import-e2e-${CI_JOB_ID}" -f docker-compose.test.import.yml logs --timestamps --no-color > import-e2e-compose.log || true
     - docker compose -p "zk-memory-import-e2e-${CI_JOB_ID}" -f docker-compose.test.import.yml down -v
