@@ -54,6 +54,33 @@ func TestLoadGeneratedObsidianVaultReconstructsCanonicalDocument(t *testing.T) {
 	}
 }
 
+func TestResolveTagIDsReusesExistingTagIdentityByNormalizedName(t *testing.T) {
+	raw := json.RawMessage(`{
+		"version":1,
+		"tags":[{"id":"generated-tag","name":" Topic ","created_at":"2026-07-17T00:00:00Z"}],
+		"note_tags":[{"note_id":"note-1","tag_id":"generated-tag","created_at":"2026-07-17T00:00:00Z"}]
+	}`)
+
+	resolved, err := ResolveTagIDs(raw, map[string]string{"topic": "database-tag"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document struct {
+		Tags []struct {
+			ID string `json:"id"`
+		} `json:"tags"`
+		NoteTags []struct {
+			TagID string `json:"tag_id"`
+		} `json:"note_tags"`
+	}
+	if err := json.Unmarshal(resolved, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.Tags[0].ID != "database-tag" || document.NoteTags[0].TagID != "database-tag" {
+		t.Fatalf("existing tag identity was not reused: %#v", document)
+	}
+}
+
 func TestLoadRejectsSymlinkBufferDirectory(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "zk-memory-manifest.json"), []byte(`{"version":1,"tags":[],"note_tags":[],"relation_types":[],"links":[]}`), 0o600); err != nil {

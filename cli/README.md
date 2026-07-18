@@ -158,7 +158,7 @@ memory import ~/vault/<note-id>.md --type links --id <link-id>
 
 Supported JSON selection types are `notes`, `tags`, `note_tags`, `relation_types`, `links`, and `buffer_notes`. A note-tag ID is written as `<note-id>:<tag-id>`. `--soft` and `--force` are mutually exclusive.
 
-Generated Markdown vault imports use note frontmatter and `zk-memory-manifest.json` as authoritative metadata; rendered Links/Related sections are ignored as note content. A lone generated Markdown file can supply its note and encoded links. Shared tags and relation types require the full vault manifest unless sufficient encoded dependency metadata is present; unsupported metadata is omitted rather than guessed.
+Generated Markdown vault imports use note frontmatter and `zk-memory-manifest.json` as authoritative metadata; rendered Links/Related sections are ignored as note content. A lone generated Markdown file can supply its note and encoded links. Its tags reuse case-insensitive name matches from the database and receive deterministic IDs only when new. Shared relation types require the full vault manifest unless sufficient encoded dependency metadata is present; unsupported metadata is omitted rather than guessed.
 
 ### dump
 

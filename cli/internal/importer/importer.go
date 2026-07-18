@@ -169,6 +169,48 @@ func projectedTags(note map[string]any) ([]json.RawMessage, []json.RawMessage) {
 	return tags, associations
 }
 
+// ResolveTagIDs replaces synthesized Markdown tag IDs with matching database IDs.
+func ResolveTagIDs(raw json.RawMessage, existingByName map[string]string) (json.RawMessage, error) {
+	var doc document
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return nil, fmt.Errorf("decode import document for tag resolution: %w", err)
+	}
+	resolvedIDs := map[string]string{}
+	for i, rawTag := range doc.Tags {
+		var tag map[string]any
+		if err := json.Unmarshal(rawTag, &tag); err != nil {
+			return nil, fmt.Errorf("decode import tag for resolution: %w", err)
+		}
+		oldID, _ := tag["id"].(string)
+		name, _ := tag["name"].(string)
+		if databaseID, ok := existingByName[strings.ToLower(strings.TrimSpace(name))]; ok {
+			tag["id"] = databaseID
+			resolvedIDs[oldID] = databaseID
+			encoded, err := json.Marshal(tag)
+			if err != nil {
+				return nil, fmt.Errorf("encode resolved import tag: %w", err)
+			}
+			doc.Tags[i] = encoded
+		}
+	}
+	for i, rawAssociation := range doc.NoteTags {
+		var association map[string]any
+		if err := json.Unmarshal(rawAssociation, &association); err != nil {
+			return nil, fmt.Errorf("decode import note-tag for resolution: %w", err)
+		}
+		oldID, _ := association["tag_id"].(string)
+		if databaseID, ok := resolvedIDs[oldID]; ok {
+			association["tag_id"] = databaseID
+			encoded, err := json.Marshal(association)
+			if err != nil {
+				return nil, fmt.Errorf("encode resolved import note-tag: %w", err)
+			}
+			doc.NoteTags[i] = encoded
+		}
+	}
+	return marshalDocument(doc)
+}
+
 func stableTagID(name string) string {
 	sum := sha256.Sum256([]byte("zk-memory-markdown-tag:" + name))
 	// Set RFC 4122 variant/version bits for a deterministic UUID-shaped ID.
