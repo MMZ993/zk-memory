@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -7,10 +7,11 @@ ImportEntityType = Literal[
     "notes", "tags", "note_tags", "relation_types", "links", "buffer_notes"
 ]
 ImportMode = Literal["dry_run", "soft", "force"]
+ImportID = Annotated[str, Field(min_length=1, max_length=36)]
 
 
 class ImportNote(BaseModel):
-    id: str = Field(min_length=1)
+    id: ImportID
     title: str
     content: str
     summary: str | None = None
@@ -26,14 +27,14 @@ class ImportNote(BaseModel):
 
 
 class ImportTag(BaseModel):
-    id: str = Field(min_length=1)
+    id: ImportID
     name: str
     created_at: datetime
 
 
 class ImportNoteTag(BaseModel):
-    note_id: str = Field(min_length=1)
-    tag_id: str = Field(min_length=1)
+    note_id: ImportID
+    tag_id: ImportID
     created_at: datetime
 
     @property
@@ -42,7 +43,7 @@ class ImportNoteTag(BaseModel):
 
 
 class ImportRelationType(BaseModel):
-    id: str = Field(min_length=1)
+    id: ImportID
     name: str
     description: str | None = None
     is_bidirectional: bool
@@ -50,16 +51,16 @@ class ImportRelationType(BaseModel):
 
 
 class ImportLink(BaseModel):
-    id: str = Field(min_length=1)
-    source_id: str = Field(min_length=1)
-    target_id: str = Field(min_length=1)
-    relation_type_id: str = Field(min_length=1)
+    id: ImportID
+    source_id: ImportID
+    target_id: ImportID
+    relation_type_id: ImportID
     description: str | None = None
     created_at: datetime
 
 
 class ImportBufferNote(BaseModel):
-    id: str = Field(min_length=1)
+    id: ImportID
     content: str
     meta: dict[str, Any] | None = None
     processed: bool
