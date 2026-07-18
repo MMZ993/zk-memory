@@ -3,7 +3,8 @@ PYTEST := .venv/bin/python -m pytest
 .PHONY: test test-cli \
         test-integration test-integration-down \
         test-integration-postgres test-integration-postgres-down \
-        test-integration-auth test-integration-auth-down
+        test-integration-auth test-integration-auth-down \
+        test-integration-import test-integration-import-down
 
 # Python unit tests (no external services required)
 test:
@@ -48,3 +49,23 @@ test-integration-auth:
 # Tear down the auth test stack without running tests (cleanup after failure)
 test-integration-auth-down:
 	docker compose -f docker-compose.test.auth.yml down -v
+
+# Import E2E — fresh SQLite + Qdrant + deterministic mock Ollama (port 8004).
+test-integration-import:
+	@set -eu; \
+	project="$${IMPORT_E2E_PROJECT:-zk-memory-import-e2e-local-$$$$}"; \
+	compose="docker compose -p $$project -f docker-compose.test.import.yml"; \
+	cleanup() { \
+		$$compose logs --timestamps --no-color > import-e2e-compose.log 2>/dev/null || true; \
+		$$compose down -v >/dev/null 2>&1 || true; \
+	}; \
+	trap cleanup EXIT INT TERM; \
+	cd cli && go build -o dist/memory . && cd ..; \
+	$$compose up -d --build; \
+	port=$$($$compose port agents-memory-test-import 8000 | awk -F: 'NR == 1 { print $$NF }'); \
+	test -n "$$port"; \
+	E2E_IMPORT_TESTS=1 IMPORT_API_URL="http://127.0.0.1:$$port" CLI_BIN=cli/dist/memory $(PYTEST) tests/e2e/test_import_workflow.py -v
+
+test-integration-import-down:
+	@test -n "$${IMPORT_E2E_PROJECT:-}" || { echo "IMPORT_E2E_PROJECT is required" >&2; exit 1; }; \
+	docker compose -p "$$IMPORT_E2E_PROJECT" -f docker-compose.test.import.yml down -v

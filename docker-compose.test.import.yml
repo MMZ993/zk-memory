@@ -1,0 +1,40 @@
+# Isolated canonical/Markdown import end-to-end regression stack.
+services:
+  agents-memory-test-import:
+    build: .
+    command: uv run uvicorn main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: sqlite:///./data/test_import.db
+      QDRANT_HOST: qdrant-test-import
+      QDRANT_PORT: 6333
+      QDRANT_COLLECTION: test_memory_import
+      EMBEDDING_MODEL: nomic-embed-text
+      EMBEDDING_DIMENSION: 768
+      OLLAMA_HOST: http://ollama-test-import:11434
+      BUFFER_RETENTION_DAYS: 7
+      LOG_LEVEL: INFO
+    ports:
+      - "127.0.0.1::8000"
+    volumes:
+      - test_import_data:/app/data
+    depends_on:
+      - qdrant-test-import
+      - ollama-test-import
+    restart: "no"
+
+  qdrant-test-import:
+    image: qdrant/qdrant@sha256:94728574965d17c6485dd361aa3c0818b325b9016dac5ea6afec7b4b2700865f
+    volumes:
+      - test_import_qdrant:/qdrant/storage
+    restart: "no"
+
+  ollama-test-import:
+    image: python:3.13-slim
+    command: python /mock_ollama.py
+    volumes:
+      - ./tests/e2e/mock_ollama.py:/mock_ollama.py:ro
+    restart: "no"
+
+volumes:
+  test_import_data:
+  test_import_qdrant:
