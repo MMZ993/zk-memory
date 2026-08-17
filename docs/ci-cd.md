@@ -58,7 +58,7 @@ Tag pipelines also upload the CLI tarball to GitLab Generic Package Registry:
 - Python integration suite excluding auth tests
 - CLI smoke script: `scripts/ci_smoke.sh`
 
-`OLLAMA_HOST` is configurable and defaults to `https://ollama.mmz.sh` in CI.
+`OLLAMA_HOST` is configurable and defaults to the internal Ollama deployment endpoint in CI.
 
 ## Downstream Deploy Contract (homelab-services)
 

@@ -1,6 +1,10 @@
-# AI Agent Memory System
+# zk-memory
 
-Local-first memory backend for agents, with a Go CLI as the main frontend.
+Local-first memory backend for AI agents, inspired by the Zettelkasten note-taking method, with a Go CLI as the main frontend.
+
+Bespoke private software, created using LLM agent-assisted coding. Intended to run in a private homelab.
+
+Hosted on local GitLab; a public mirror is available on GitHub.
 
 ## Goals
 
@@ -16,7 +20,7 @@ Local-first memory backend for agents, with a Go CLI as the main frontend.
 - Search modes: semantic, keyword, hybrid, graph traversal
 - Admin operations: stats, config, unsynced repair, re-embed
 - Readiness endpoint for DB + Qdrant dependency checks
-- Prometheus metrics endpoint for VLAN-isolated monitoring
+- Prometheus metrics endpoint for restricted internal monitoring
 
 ## Architecture
 
@@ -28,10 +32,10 @@ Local-first memory backend for agents, with a Go CLI as the main frontend.
 
 ## Quick Start (Local)
 
-1) Install dependencies:
+1) Synchronize the exact locked development environment:
 
 ```bash
-uv sync
+uv sync --frozen
 ```
 
 2) Start Qdrant (if not already running):
@@ -128,7 +132,7 @@ make test-integration-postgres
 
 ## Metrics
 
-`GET /metrics` exposes Prometheus text-format metrics for a Prometheus server and Grafana dashboards. It is intentionally unauthenticated: restrict access to the monitoring VLAN with router ACLs or a reverse-proxy/network allowlist. Do not expose it to untrusted or public networks.
+`GET /metrics` exposes Prometheus text-format metrics for a Prometheus server and Grafana dashboards. It is intentionally unauthenticated: restrict access to a trusted internal network segment with network ACLs or a reverse-proxy/network allowlist. Do not expose it to untrusted or public networks.
 
 The endpoint reports current note, tag, link, and buffer-note totals; notes per tag; note and buffer read/create counters; pending embedding-sync count and oldest-pending age (`memory_sync_oldest_pending_seconds` is `0` when no notes are pending); embedding-sync result counters; HTTP request count and duration; plus Ollama embedding and Qdrant operation count and duration. HTTP paths use matched route templates rather than raw IDs. Tag names are emitted as the `tag` label, so keep the tag vocabulary bounded. The service supports one application process; Prometheus multiprocess collection is not configured.
 
@@ -183,3 +187,7 @@ No rate limiting on API endpoints. Acceptable for personal/local use where you c
 ### SQLite FTS5 Query Handling
 
 Keyword search passes user input to FTS5 with minimal escaping (double quotes only). Special FTS5 operators are not sanitized. Acceptable for personal use.
+
+## Status
+
+This is an internal project released publicly as-is. Deployment-specific configuration and credentials are maintained separately and are not included.

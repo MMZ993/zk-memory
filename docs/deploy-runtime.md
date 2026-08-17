@@ -42,11 +42,11 @@ Post-deploy:
 1. `GET /api/health`
 2. `GET /api/readiness`
 3. Run `scripts/ci_smoke.sh` against the deployed endpoint
-4. Confirm Prometheus can scrape `GET /metrics` from the monitoring VLAN
+4. Confirm Prometheus can scrape `GET /metrics` from the monitoring network
 
 ## Metrics Network Exposure
 
-`GET /metrics` is intentionally unauthenticated so Prometheus can scrape it without application credentials. Keep the API port and this endpoint reachable only from the monitoring VLAN through router ACLs, or restrict it with an equivalent reverse-proxy/network allowlist. Do not publish it to a public network.
+`GET /metrics` is intentionally unauthenticated so Prometheus can scrape it without application credentials. Keep the API port and this endpoint reachable only from the monitoring network through network ACLs, or restrict it with an equivalent reverse-proxy/network allowlist. Do not publish it to a public network.
 
 Prometheus should scrape the same API port with a target such as `zk-memory.internal:8000`. HTTP metrics use matched route templates rather than raw IDs, and dependency metrics distinguish Ollama embedding requests from Qdrant upsert/search/delete operations. `memory_sync_oldest_pending_seconds` complements the pending-sync count by exposing stalled work and is `0` when no notes are pending. The application is single-process; Prometheus multiprocess collection is not configured.
 
