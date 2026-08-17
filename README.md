@@ -99,23 +99,31 @@ memory admin stats --pretty
 - API health status/version (`/api/health`)
 - Dependency readiness (`/api/readiness`)
 
-## Scripts
+## Developer Scripts
 
-Current scripts in `scripts/`:
+- `scripts/seed.py` — seed the API with a smart-home test dataset via HTTP
+- `scripts/reset_integration.sh` — wipe local integration-test data (SQLite DB + Qdrant collection) for a clean re-run
+- `scripts/dev-reset-postgres.sh` — drop and re-apply the dev PostgreSQL schema via Alembic, clearing Qdrant to match
+- `scripts/test_integration_import.sh` — import E2E stack; wrapped by `make test-integration-import`
 
-- `scripts/seed.py`
-- `scripts/reset_integration.sh`
-- `scripts/dev-reset-postgres.sh`
+CI helper scripts (`scripts/ci_*.sh`) are pipeline-internal; see `docs/ci-cd.md`.
 
 ## Testing
 
 ```bash
+# Unit tests (no external services required).
 make test
 make test-cli
+
+# Integration suites. sqlite/postgres/auth require host Ollama with nomic-embed-text pulled;
+# import is self-contained (SQLite + Qdrant + mock Ollama in compose, no host services).
 make test-integration
-make test-integration-auth
 make test-integration-postgres
+make test-integration-auth
+make test-integration-import
 ```
+
+Each integration target has a `-down` variant (e.g. `make test-integration-down`) to tear down its compose stack after a failed run.
 
 ## API Documentation
 
