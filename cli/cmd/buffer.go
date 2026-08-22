@@ -173,7 +173,7 @@ var bufferCleanupCmd = &cobra.Command{
 }
 
 // resolveProcessedFilter maps mutually exclusive buffer-list flags to an API filter.
-// With no flag, it returns processed=true; --all returns no filter.
+// With no flag, it returns processed=false; --all returns no filter.
 func resolveProcessedFilter(processed bool, unprocessed bool, all bool) (*bool, error) {
 	selected := 0
 	for _, enabled := range []bool{processed, unprocessed, all} {
@@ -187,12 +187,16 @@ func resolveProcessedFilter(processed bool, unprocessed bool, all bool) (*bool, 
 	if all {
 		return nil, nil
 	}
+	if processed {
+		t := true
+		return &t, nil
+	}
 	if unprocessed {
 		f := false
 		return &f, nil
 	}
-	t := true
-	return &t, nil
+	f := false
+	return &f, nil
 }
 
 // buildBufferListOpts constructs API list options from the buffer-list CLI flags.
@@ -216,8 +220,8 @@ func init() {
 	bufferAddCmd.Flags().StringVar(&bufferAddMeta, "meta", "", "Raw JSON metadata (overrides --source)")
 
 	// list flags
-	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes (the default; mutually exclusive with --unprocessed and --all)")
-	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes (mutually exclusive with --processed and --all)")
+	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes (mutually exclusive with --unprocessed and --all)")
+	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes (the default; mutually exclusive with --processed and --all)")
 	bufferListCmd.Flags().BoolVar(&bufferListAll, "all", false, "Show all notes (mutually exclusive with --processed and --unprocessed)")
 	bufferListCmd.Flags().IntVar(&bufferListLimit, "limit", 0, "Max results")
 	bufferListCmd.Flags().IntVar(&bufferListOffset, "offset", 0, "Pagination offset")

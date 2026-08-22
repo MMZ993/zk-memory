@@ -20,13 +20,23 @@ func TestBuildBufferListOptsReturnsValidationError(t *testing.T) {
 	}
 }
 
-func TestResolveProcessedFilterDefaultsToProcessed(t *testing.T) {
+func TestResolveProcessedFilterDefaultsToUnprocessed(t *testing.T) {
 	processed, err := resolveProcessedFilter(false, false, false)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if processed == nil || *processed {
+		t.Fatalf("expected default filter to be processed=false, got %#v", processed)
+	}
+}
+
+func TestResolveProcessedFilterReturnsProcessedForProcessedFlag(t *testing.T) {
+	processed, err := resolveProcessedFilter(true, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if processed == nil || !*processed {
-		t.Fatalf("expected default filter to be processed=true, got %#v", processed)
+		t.Fatalf("expected processed filter to be true, got %#v", processed)
 	}
 }
 

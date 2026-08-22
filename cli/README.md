@@ -105,7 +105,7 @@ memory notes links graph <note-id> [--depth 1]
 
 ```bash
 memory buffer add --content "..." [--source "label"] [--meta '{"key":"val"}']
-memory buffer list [--processed|--unprocessed|--all] [--limit N] [--offset N]  # defaults to --processed
+memory buffer list [--processed|--unprocessed|--all] [--limit N] [--offset N]  # defaults to --unprocessed
 memory buffer get <id>
 memory buffer delete <id>
 memory buffer process <id>
