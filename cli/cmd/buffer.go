@@ -61,6 +61,7 @@ var bufferAddCmd = &cobra.Command{
 var (
 	bufferListProcessed   bool
 	bufferListUnprocessed bool
+	bufferListAll         bool
 	bufferListLimit       int
 	bufferListOffset      int
 )
@@ -69,7 +70,7 @@ var bufferListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List buffer notes",
 	Run: func(cmd *cobra.Command, args []string) {
-		opts, err := buildBufferListOpts(bufferListProcessed, bufferListUnprocessed, bufferListLimit, bufferListOffset)
+		opts, err := buildBufferListOpts(bufferListProcessed, bufferListUnprocessed, bufferListAll, bufferListLimit, bufferListOffset)
 		if err != nil {
 			fatal("%v", err)
 		}
@@ -171,23 +172,32 @@ var bufferCleanupCmd = &cobra.Command{
 	},
 }
 
-func resolveProcessedFilter(processed bool, unprocessed bool) (*bool, error) {
-	if processed && unprocessed {
-		return nil, fmt.Errorf("--processed and --unprocessed are mutually exclusive")
+// resolveProcessedFilter maps mutually exclusive buffer-list flags to an API filter.
+// With no flag, it returns processed=true; --all returns no filter.
+func resolveProcessedFilter(processed bool, unprocessed bool, all bool) (*bool, error) {
+	selected := 0
+	for _, enabled := range []bool{processed, unprocessed, all} {
+		if enabled {
+			selected++
+		}
 	}
-	if processed {
-		t := true
-		return &t, nil
+	if selected > 1 {
+		return nil, fmt.Errorf("--processed, --unprocessed, and --all are mutually exclusive")
+	}
+	if all {
+		return nil, nil
 	}
 	if unprocessed {
 		f := false
 		return &f, nil
 	}
-	return nil, nil
+	t := true
+	return &t, nil
 }
 
-func buildBufferListOpts(processed bool, unprocessed bool, limit int, offset int) (client.BufferListOpts, error) {
-	processedFilter, err := resolveProcessedFilter(processed, unprocessed)
+// buildBufferListOpts constructs API list options from the buffer-list CLI flags.
+func buildBufferListOpts(processed bool, unprocessed bool, all bool, limit int, offset int) (client.BufferListOpts, error) {
+	processedFilter, err := resolveProcessedFilter(processed, unprocessed, all)
 	if err != nil {
 		return client.BufferListOpts{}, err
 	}
@@ -206,8 +216,9 @@ func init() {
 	bufferAddCmd.Flags().StringVar(&bufferAddMeta, "meta", "", "Raw JSON metadata (overrides --source)")
 
 	// list flags
-	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes (mutually exclusive with --unprocessed)")
-	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes (mutually exclusive with --processed)")
+	bufferListCmd.Flags().BoolVar(&bufferListProcessed, "processed", false, "Show only processed notes (the default; mutually exclusive with --unprocessed and --all)")
+	bufferListCmd.Flags().BoolVar(&bufferListUnprocessed, "unprocessed", false, "Show only unprocessed notes (mutually exclusive with --processed and --all)")
+	bufferListCmd.Flags().BoolVar(&bufferListAll, "all", false, "Show all notes (mutually exclusive with --processed and --unprocessed)")
 	bufferListCmd.Flags().IntVar(&bufferListLimit, "limit", 0, "Max results")
 	bufferListCmd.Flags().IntVar(&bufferListOffset, "offset", 0, "Pagination offset")
 

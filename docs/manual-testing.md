@@ -269,14 +269,14 @@ memory buffer add --content "Remember to check Zigbee firmware" --pretty
 memory buffer add --content "Look into Matter protocol" --source research --pretty
 memory buffer add --content "High priority task" --meta '{"priority":"high","source":"voice"}' --pretty
 
-# List all buffer notes
+# List only processed (default)
 memory buffer list --pretty
 
 # List only unprocessed
 memory buffer list --unprocessed --pretty
 
-# List only processed
-memory buffer list --processed --pretty
+# List all buffer notes
+memory buffer list --all --pretty
 
 # Get one buffer note by ID
 BUFFER_ID=$(memory buffer list | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")

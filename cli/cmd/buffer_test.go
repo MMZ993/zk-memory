@@ -9,14 +9,34 @@ import (
 )
 
 func TestResolveProcessedFilterErrorsWhenBothFlagsSet(t *testing.T) {
-	if _, err := resolveProcessedFilter(true, true); err == nil {
+	if _, err := resolveProcessedFilter(true, true, false); err == nil {
 		t.Fatal("expected error when both --processed and --unprocessed are set")
 	}
 }
 
 func TestBuildBufferListOptsReturnsValidationError(t *testing.T) {
-	if _, err := buildBufferListOpts(true, true, 10, 20); err == nil {
+	if _, err := buildBufferListOpts(true, true, false, 10, 20); err == nil {
 		t.Fatal("expected mutual-exclusion validation error")
+	}
+}
+
+func TestResolveProcessedFilterDefaultsToProcessed(t *testing.T) {
+	processed, err := resolveProcessedFilter(false, false, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if processed == nil || !*processed {
+		t.Fatalf("expected default filter to be processed=true, got %#v", processed)
+	}
+}
+
+func TestResolveProcessedFilterAllReturnsNoFilter(t *testing.T) {
+	processed, err := resolveProcessedFilter(false, false, true)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if processed != nil {
+		t.Fatalf("expected no filter for --all, got %#v", processed)
 	}
 }
 
@@ -26,12 +46,14 @@ func TestBufferListCommandValidatesFlagsBeforeClientSetup(t *testing.T) {
 	origStderr := stderrWriter
 	origProcessed := bufferListProcessed
 	origUnprocessed := bufferListUnprocessed
+	origAll := bufferListAll
 	defer func() {
 		newBufferClient = origClientFactory
 		exitFn = origExit
 		stderrWriter = origStderr
 		bufferListProcessed = origProcessed
 		bufferListUnprocessed = origUnprocessed
+		bufferListAll = origAll
 	}()
 
 	called := 0
@@ -61,7 +83,7 @@ func TestBufferListCommandValidatesFlagsBeforeClientSetup(t *testing.T) {
 		if called != 0 {
 			t.Fatalf("expected client factory to be skipped, called=%d", called)
 		}
-		if !strings.Contains(stderr.String(), "--processed and --unprocessed are mutually exclusive") {
+		if !strings.Contains(stderr.String(), "mutually exclusive") {
 			t.Fatalf("unexpected stderr output: %q", stderr.String())
 		}
 	}()
